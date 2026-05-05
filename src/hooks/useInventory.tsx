@@ -65,10 +65,34 @@ export function useInventory() {
     }
   };
 
+  const deleteCount = async (id: string) => {
+    try {
+      if (USE_DEMO) {
+        const updated = counts.filter(c => c.id !== id);
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+        setCounts(updated);
+        return true;
+      } else {
+        const { error } = await supabase
+          .from('inventory_counts')
+          .delete()
+          .eq('id', id);
+        
+        if (error) throw error;
+        setCounts(counts.filter(c => c.id !== id));
+        return true;
+      }
+    } catch (err) {
+      console.error(err);
+      return false;
+    }
+  };
+
   return {
     counts,
     loading,
     addCount,
+    deleteCount,
     refresh: fetchCounts,
   };
 }

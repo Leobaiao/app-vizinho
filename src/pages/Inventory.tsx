@@ -4,20 +4,33 @@ import { useProducts } from '../hooks/useProducts';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
 import { BarcodeScanner } from '../components/BarcodeScanner';
-import { Barcode, History, AlertTriangle, CheckCircle2, PackageSearch, X } from 'lucide-react';
+import { Modal } from '../components/ui/Modal';
+import { Barcode, History, AlertTriangle, CheckCircle2, PackageSearch, X, Trash2 } from 'lucide-react';
 
 export default function Inventory() {
-  const { counts, addCount, loading: countsLoading } = useInventory();
+  const { counts, addCount, deleteCount, loading: countsLoading } = useInventory();
   const { products, loading: productsLoading } = useProducts();
   const [showScanner, setShowScanner] = useState(false);
   const [lastScanned, setLastScanned] = useState<any>(null);
   const [showReport, setShowReport] = useState(false);
 
+  // Controle do Modal
+  const [modal, setModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    description: string;
+    variant: 'danger' | 'success' | 'warning' | 'info';
+    actionLabel?: string;
+    onAction?: () => void;
+  }>({ isOpen: false, title: '', description: '', variant: 'info' });
+
+  const closeModal = () => setModal(prev => ({ ...prev, isOpen: false }));
+
   const handleScan = async (code: string) => {
-    // Fechar o scanner imediatamente após ler qualquer coisa para a tela não ficar preta
-    setShowScanner(false);
+    // Não fechamos mais o scanner! O modo agora é "Contínuo".
+    // O debounce no BarcodeScanner impede múltiplas leituras em menos de 2.5s.
     
-    // Normalizar removendo espaços e ZEROS à esquerda (Resolve confusão entre UPC-A de 12 dígitos e EAN-13 de 13 dígitos)
+    // Normalizar removendo espaços e ZEROS à esquerda
     const cleanScannedCode = String(code).trim().replace(/^0+/, '');
     const product = products.find(p => String(p.barcode || '').trim().replace(/^0+/, '') === cleanScannedCode);
     
@@ -25,14 +38,19 @@ export default function Inventory() {
       const newCount = await addCount({
         product_id: product.id,
         counted_quantity: 1,
-        expected_quantity: product.current_stock, // Salvar o que o sistema achava na hora
+        expected_quantity: product.current_stock,
       });
       
       if (newCount) {
         setLastScanned({ ...product, timestamp: new Date().toLocaleTimeString() });
       }
     } else {
-      alert(`Produto com código ${String(code).trim()} não encontrado no sistema! Verifique se foi cadastrado com este exato código.`);
+      setModal({
+        isOpen: true,
+        variant: 'warning',
+        title: 'Produto Não Encontrado',
+        description: `O código lido foi ${String(code).trim()}. Nenhum produto no sistema corresponde exatamente a ele.`,
+      });
     }
   };
 
@@ -108,25 +126,43 @@ export default function Inventory() {
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500 pb-20">
+      <Modal 
+        isOpen={modal.isOpen} 
+        onClose={closeModal}
+        title={modal.title}
+        description={modal.description}
+        variant={modal.variant}
+        actionLabel={modal.actionLabel}
+        onAction={modal.onAction}
+      />
+
       <div className="flex flex-col gap-4">
         <h1 className="text-3xl font-bold tracking-tight">Estoque e Contagem</h1>
         <p className="text-muted-foreground">Bipe os produtos na prateleira para atualizar o inventário.</p>
       </div>
 
-      {showScanner && (
-        <BarcodeScanner onScan={handleScan} onClose={() => setShowScanner(false)} />
-      )}
-
-      {/* Botão de Ação Principal */}
-      <button 
-        onClick={() => setShowScanner(true)}
-        className="w-full aspect-[2/1] rounded-3xl bg-primary text-primary-foreground flex flex-col items-center justify-center gap-4 shadow-xl shadow-primary/20 active:scale-95 transition-all"
-      >
-        <div className="p-5 rounded-full bg-white/20">
-          <Barcode size={48} />
+      {showScanner ? (
+        <div className="relative">
+          <BarcodeScanner onScan={handleScan} inline={true} />
+          <Button 
+            variant="outline" 
+            className="w-full absolute -bottom-4 z-10 mx-auto left-0 right-0 max-w-[200px] shadow-lg bg-card"
+            onClick={() => setShowScanner(false)}
+          >
+            <X className="mr-2 h-4 w-4" /> Fechar Câmera
+          </Button>
         </div>
-        <span className="text-2xl font-black uppercase tracking-wider">Bipar Produto</span>
-      </button>
+      ) : (
+        <button 
+          onClick={() => setShowScanner(true)}
+          className="w-full aspect-[2/1] rounded-3xl bg-primary text-primary-foreground flex flex-col items-center justify-center gap-4 shadow-xl shadow-primary/20 active:scale-95 transition-all"
+        >
+          <div className="p-5 rounded-full bg-white/20">
+            <Barcode size={48} />
+          </div>
+          <span className="text-2xl font-black uppercase tracking-wider">Iniciar Leitor</span>
+        </button>
+      )}
 
       {/* Feedback do último item lido */}
       {lastScanned && (
@@ -171,9 +207,28 @@ export default function Inventory() {
                       </p>
                     </div>
                   </div>
-                  <div className="text-right">
-                    <p className="font-black text-primary">+{count.counted_quantity}</p>
-                    <p className="text-[10px] text-muted-foreground uppercase font-bold">Unidade</p>
+                  <div className="flex items-center gap-3">
+                    <div className="text-right mr-2">
+                      <p className="font-black text-primary">+{count.counted_quantity}</p>
+                      <p className="text-[10px] text-muted-foreground uppercase font-bold">Unidade</p>
+                    </div>
+                    <Button 
+                      variant="ghost" 
+                      size="icon" 
+                      className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                      onClick={() => {
+                        setModal({
+                          isOpen: true,
+                          variant: 'danger',
+                          title: 'Desfazer Contagem?',
+                          description: `Tem certeza que deseja apagar a contagem de ${product?.name || 'este produto'}?`,
+                          actionLabel: 'Desfazer',
+                          onAction: () => deleteCount(count.id),
+                        });
+                      }}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
                   </div>
                 </Card>
               );

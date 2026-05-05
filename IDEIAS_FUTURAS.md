@@ -15,6 +15,7 @@ Este documento lista as funcionalidades e melhorias planejadas para as próximas
 - [ ] **Validade de Produtos**: Campo para data de validade com alerta visual (ex: ícone vermelho se faltar 7 dias para vencer).
 
 ## 📈 Prioridade III: Inteligência e Vendas
+- [ ] **Integração com API de Código de Barras**: Buscar automaticamente o Nome, Marca e Foto do produto na internet (ex: BrasilAPI ou Cosmos) assim que o usuário escanear um código novo no cadastro.
 - [ ] **PDV Simples (Frente de Caixa)**: Uma tela rápida para registrar vendas. Isso permitiria calcular o lucro real diário.
 - [ ] **Curva ABC**: Identificar automaticamente quais produtos trazem 80% do seu lucro.
 - [ ] **Simulador de Promoção**: Ferramenta que diz: "Se eu der 10% de desconto neste item, qual será minha nova margem?".

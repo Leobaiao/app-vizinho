@@ -3,6 +3,7 @@ import { parseNFeXML, type NFeItem } from '../utils/xmlParser';
 import { useProducts } from '../hooks/useProducts';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
+import { Modal } from '../components/ui/Modal';
 import { FileUp, FileText, CheckCircle2, AlertCircle, ArrowRight } from 'lucide-react';
 
 export default function History() {
@@ -10,6 +11,13 @@ export default function History() {
   const [items, setItems] = useState<NFeItem[]>([]);
   const [importing, setImporting] = useState(false);
   const [step, setStep] = useState<'upload' | 'review'>('upload');
+
+  const [modal, setModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    description: string;
+    variant: 'danger' | 'success' | 'warning' | 'info';
+  }>({ isOpen: false, title: '', description: '', variant: 'success' });
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -28,6 +36,7 @@ export default function History() {
   const handleImport = async () => {
     setImporting(true);
     // Lógica para atualizar o estoque e preços dos produtos encontrados
+    let updatedCount = 0;
     for (const item of items) {
       const existingProduct = products.find(p => String(p.barcode || '').trim().replace(/^0+/, '') === String(item.barcode || '').trim().replace(/^0+/, ''));
       if (existingProduct && item.barcode) {
@@ -36,16 +45,32 @@ export default function History() {
           current_stock: existingProduct.current_stock + item.quantity,
           cost_price: item.unitPrice, // Atualiza para o custo mais recente
         });
+        updatedCount++;
       }
     }
     setImporting(false);
-    alert('Importação concluída! O estoque e os preços de custo foram atualizados.');
+    
+    setModal({
+      isOpen: true,
+      variant: 'success',
+      title: 'Importação Concluída!',
+      description: `O estoque e os preços de custo de ${updatedCount} produtos foram atualizados com sucesso.`
+    });
+    
     setStep('upload');
     setItems([]);
   };
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500 pb-20">
+      <Modal 
+        isOpen={modal.isOpen} 
+        onClose={() => setModal(p => ({ ...p, isOpen: false }))}
+        title={modal.title}
+        description={modal.description}
+        variant={modal.variant}
+      />
+
       <div className="flex flex-col gap-2">
         <h1 className="text-3xl font-bold tracking-tight">Importar NF-e</h1>
         <p className="text-muted-foreground">Automatize a entrada de estoque via arquivo XML.</p>

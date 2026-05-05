@@ -5,6 +5,7 @@ import { Input } from '../components/ui/Input';
 import { Card } from '../components/ui/Card';
 import { ProductForm } from '../components/ProductForm';
 import { BarcodeScanner } from '../components/BarcodeScanner';
+import { Modal } from '../components/ui/Modal';
 import { Plus, Search, Package, Edit2, Trash2, Barcode } from 'lucide-react';
 import type { ProductInsert } from '../types/product';
 
@@ -15,6 +16,15 @@ export default function Products() {
   const [editingProduct, setEditingProduct] = useState<any>(null);
   const [submitting, setSubmitting] = useState(false);
   const [showScanner, setShowScanner] = useState(false);
+
+  const [modal, setModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    description: string;
+    variant: 'danger' | 'success' | 'warning' | 'info';
+    actionLabel?: string;
+    onAction?: () => void;
+  }>({ isOpen: false, title: '', description: '', variant: 'info' });
 
   const handleAddProduct = async (data: ProductInsert) => {
     setSubmitting(true);
@@ -31,10 +41,15 @@ export default function Products() {
     setSubmitting(false);
   };
 
-  const handleDeleteProduct = async (id: string) => {
-    if (window.confirm('Tem certeza que deseja excluir este produto?')) {
-      await deleteProduct(id);
-    }
+  const confirmDelete = (product: any) => {
+    setModal({
+      isOpen: true,
+      variant: 'danger',
+      title: 'Excluir Produto?',
+      description: `Tem certeza que deseja excluir "${product.name}"? O histórico de inventário relacionado a ele será mantido, mas ele não aparecerá mais no catálogo.`,
+      actionLabel: 'Excluir',
+      onAction: () => deleteProduct(product.id),
+    });
   };
 
   if (isAdding || editingProduct) {
@@ -69,6 +84,16 @@ export default function Products() {
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
+      <Modal 
+        isOpen={modal.isOpen} 
+        onClose={() => setModal(p => ({ ...p, isOpen: false }))}
+        title={modal.title}
+        description={modal.description}
+        variant={modal.variant}
+        actionLabel={modal.actionLabel}
+        onAction={modal.onAction}
+      />
+
       {showScanner && (
         <BarcodeScanner 
           onScan={(code) => {
@@ -152,7 +177,7 @@ export default function Products() {
                     variant="ghost" 
                     size="icon" 
                     className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                    onClick={() => handleDeleteProduct(product.id)}
+                    onClick={() => confirmDelete(product)}
                   >
                     <Trash2 className="h-4 w-4" />
                   </Button>
