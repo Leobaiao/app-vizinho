@@ -29,7 +29,7 @@ export default function History() {
     setImporting(true);
     // Lógica para atualizar o estoque e preços dos produtos encontrados
     for (const item of items) {
-      const existingProduct = products.find(p => p.barcode === item.barcode);
+      const existingProduct = products.find(p => String(p.barcode || '').trim().replace(/^0+/, '') === String(item.barcode || '').trim().replace(/^0+/, ''));
       if (existingProduct && item.barcode) {
         // Atualiza estoque somando o que chegou na nota
         await updateProduct(existingProduct.id, {
@@ -88,7 +88,7 @@ export default function History() {
 
           <div className="space-y-3">
             {items.map((item, idx) => {
-              const matched = products.find(p => p.barcode === item.barcode && item.barcode !== "");
+              const matched = products.find(p => String(p.barcode || '').trim().replace(/^0+/, '') === String(item.barcode || '').trim().replace(/^0+/, '') && item.barcode !== "");
               return (
                 <Card key={idx} className={`p-4 border-l-4 ${matched ? 'border-emerald-500' : 'border-amber-500 bg-amber-500/5'}`}>
                   <div className="flex items-start justify-between gap-4">

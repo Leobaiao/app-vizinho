@@ -14,7 +14,12 @@ export default function Inventory() {
   const [showReport, setShowReport] = useState(false);
 
   const handleScan = async (code: string) => {
-    const product = products.find(p => p.barcode === code);
+    // Fechar o scanner imediatamente após ler qualquer coisa para a tela não ficar preta
+    setShowScanner(false);
+    
+    // Normalizar removendo espaços e ZEROS à esquerda (Resolve confusão entre UPC-A de 12 dígitos e EAN-13 de 13 dígitos)
+    const cleanScannedCode = String(code).trim().replace(/^0+/, '');
+    const product = products.find(p => String(p.barcode || '').trim().replace(/^0+/, '') === cleanScannedCode);
     
     if (product) {
       const newCount = await addCount({
@@ -27,7 +32,7 @@ export default function Inventory() {
         setLastScanned({ ...product, timestamp: new Date().toLocaleTimeString() });
       }
     } else {
-      alert(`Produto com código ${code} não cadastrado!`);
+      alert(`Produto com código ${String(code).trim()} não encontrado no sistema! Verifique se foi cadastrado com este exato código.`);
     }
   };
 

@@ -10,7 +10,7 @@ Este documento lista as funcionalidades e melhorias planejadas para as próximas
 - [ ] **Histórico de Preços**: No cadastro de produtos, exibir um gráfico de como o preço de custo dele variou nas últimas 5 notas fiscais (XMLs) importadas.
 
 ## 📦 Prioridade II: Operação e Automação
-- [ ] **Alerta de Ruptura via WhatsApp**: Enviar uma mensagem automática para o dono quando um item essencial atingir o estoque mínimo.
+- [x] **Alerta de Ruptura via WhatsApp**: Enviar uma mensagem automática para o dono quando um item essencial atingir o estoque mínimo.
 - [ ] **Impressão de Etiquetas**: Gerar um PDF formatado com o nome do produto e o preço de venda para imprimir e colar na prateleira.
 - [ ] **Validade de Produtos**: Campo para data de validade com alerta visual (ex: ícone vermelho se faltar 7 dias para vencer).
 

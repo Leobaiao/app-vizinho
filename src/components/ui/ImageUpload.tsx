@@ -15,10 +15,41 @@ export function ImageUpload({ value, onChange, onFileSelect }: ImageUploadProps)
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      const url = URL.createObjectURL(file);
-      setPreview(url);
-      onChange(url);
-      if (onFileSelect) onFileSelect(file);
+      // Como estamos salvando no dispositivo local por enquanto, 
+      // URL de BLOB some se fechar a aba. Precisamos converter para Base64 e comprimir!
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const img = new window.Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          const MAX_SIZE = 400; // Resolução suficiente para um thumbnail
+          let width = img.width;
+          let height = img.height;
+
+          // Manter proporção
+          if (width > height && width > MAX_SIZE) {
+            height *= MAX_SIZE / width;
+            width = MAX_SIZE;
+          } else if (height > MAX_SIZE) {
+            width *= MAX_SIZE / height;
+            height = MAX_SIZE;
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx?.drawImage(img, 0, 0, width, height);
+          
+          // Comprimir para JPEG (qualidade 70%) para ocupar quase zero espaço no celular
+          const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.7);
+          
+          setPreview(compressedDataUrl);
+          onChange(compressedDataUrl);
+          if (onFileSelect) onFileSelect(file);
+        };
+        img.src = event.target?.result as string;
+      };
+      reader.readAsDataURL(file);
     }
   };
 

@@ -1,6 +1,6 @@
-import { useEffect, useRef } from 'react';
-import { Html5QrcodeScanner, Html5QrcodeSupportedFormats } from 'html5-qrcode';
-import { X, Zap, Camera } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
+import { X, Zap, Camera, AlertCircle } from 'lucide-react';
 import { Button } from './ui/Button';
 
 interface BarcodeScannerProps {
@@ -9,37 +9,55 @@ interface BarcodeScannerProps {
 }
 
 export function BarcodeScanner({ onScan, onClose }: BarcodeScannerProps) {
-  const scannerRef = useRef<Html5QrcodeScanner | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const scannerRef = useRef<Html5Qrcode | null>(null);
 
   useEffect(() => {
-    // Configuração do scanner
-    scannerRef.current = new Html5QrcodeScanner(
-      "reader",
-      { 
-        fps: 10, 
-        qrbox: { width: 250, height: 150 },
-        aspectRatio: 1.0,
-        formatsToSupport: [Html5QrcodeSupportedFormats.EAN_13, Html5QrcodeSupportedFormats.EAN_8, Html5QrcodeSupportedFormats.CODE_128]
-      },
-      /* verbose= */ false
-    );
-
-    scannerRef.current.render(
-      (decodedText) => {
-        // Sucesso na leitura
-        onScan(decodedText);
-        if (scannerRef.current) {
-          scannerRef.current.clear();
-        }
-      },
-      () => {
-        // Erro silencioso (comum durante a busca de frames)
+    // Inicializar o scanner habilitando o uso do motor nativo do celular (BarcodeDetector) se existir
+    const html5QrCode = new Html5Qrcode("reader", {
+      experimentalFeatures: {
+        useBarCodeDetectorIfSupported: true
       }
-    );
+    });
+    scannerRef.current = html5QrCode;
+
+    const startScanner = async () => {
+      try {
+        await html5QrCode.start(
+          { facingMode: "environment" }, // Usa a câmera traseira
+          {
+            fps: 10,
+            qrbox: { width: 250, height: 150 },
+            aspectRatio: 1.0,
+            formatsToSupport: [
+              Html5QrcodeSupportedFormats.EAN_13, 
+              Html5QrcodeSupportedFormats.EAN_8, 
+              Html5QrcodeSupportedFormats.CODE_128
+            ]
+          },
+          (decodedText) => {
+            // Apenas repassa o código lido.
+            // Não chame .stop() aqui, pois o componente pai (Inventory/Products) 
+            // vai fechar a tela (setShowScanner(false)) e o useEffect cuidará do stop() com segurança.
+            onScan(decodedText);
+          },
+          () => {
+            // Erros de frame são normais, ignorar silenciosamente
+          }
+        );
+      } catch (err: any) {
+        console.error("Erro ao iniciar a câmera", err);
+        setError("Não foi possível acessar a câmera. Verifique as permissões do navegador ou se está usando HTTPS.");
+      }
+    };
+
+    startScanner();
 
     return () => {
-      if (scannerRef.current) {
-        scannerRef.current.clear().catch(error => console.error("Failed to clear scanner", error));
+      if (scannerRef.current?.isScanning) {
+        scannerRef.current.stop().then(() => {
+          scannerRef.current?.clear();
+        }).catch(console.error);
       }
     };
   }, [onScan]);
@@ -62,7 +80,16 @@ export function BarcodeScanner({ onScan, onClose }: BarcodeScannerProps) {
         </div>
 
         {/* Onde a câmera será renderizada */}
-        <div id="reader" className="overflow-hidden rounded-2xl border-2 border-primary/50 bg-gray-900 aspect-square"></div>
+        {error ? (
+          <div className="bg-red-500/10 border border-red-500/50 rounded-2xl p-6 text-center text-red-400 space-y-4">
+            <AlertCircle className="mx-auto h-8 w-8" />
+            <p>{error}</p>
+          </div>
+        ) : (
+          <div className="relative overflow-hidden rounded-2xl border-2 border-primary/50 bg-gray-900 aspect-square">
+            <div id="reader" className="w-full h-full [&>video]:object-cover" style={{ minHeight: '100%' }}></div>
+          </div>
+        )}
 
         <div className="flex justify-center pt-4">
           <Button variant="outline" className="text-white border-white/20 hover:bg-white/10" onClick={onClose}>

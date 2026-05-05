@@ -51,10 +51,13 @@ export default function Products() {
     );
   }
 
-  const filteredProducts = products.filter(p => 
-    p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    p.barcode?.includes(searchTerm)
-  );
+  const filteredProducts = products.filter(p => {
+    const searchNormalized = searchTerm.trim().replace(/^0+/, '');
+    const barcodeNormalized = String(p.barcode || '').trim().replace(/^0+/, '');
+    
+    return p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+           (barcodeNormalized && barcodeNormalized.includes(searchNormalized));
+  });
 
   if (loading) {
     return (
