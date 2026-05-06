@@ -1,22 +1,48 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
+import { useAuth } from './useAuth';
 import type { InventoryCount, InventoryCountInsert } from '../types/inventory';
 
-const USE_DEMO = true;
 const STORAGE_KEY = 'vizinho_demo_inventory';
 
 export function useInventory() {
+  const { user, isDemo } = useAuth();
   const [counts, setCounts] = useState<InventoryCount[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     fetchCounts();
-  }, []);
+
+    // Sincronização em Tempo Real (Supabase Realtime)
+    if (!isDemo && user) {
+      const channel = supabase
+        .channel('inventory_changes')
+        .on('postgres_changes', { 
+          event: '*', 
+          schema: 'public', 
+          table: 'inventory_counts',
+          filter: `user_id=eq.${user.id}` 
+        }, () => {
+          fetchCounts();
+        })
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(channel);
+      };
+    }
+  }, [user, isDemo]);
 
   const fetchCounts = async () => {
+    if (!user && !isDemo) {
+      setCounts([]);
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     try {
-      if (USE_DEMO) {
+      if (isDemo) {
         const stored = localStorage.getItem(STORAGE_KEY);
         setCounts(stored ? JSON.parse(stored) : []);
       } else {
@@ -37,7 +63,7 @@ export function useInventory() {
 
   const addCount = async (count: InventoryCountInsert) => {
     try {
-      if (USE_DEMO) {
+      if (isDemo) {
         const newCount: InventoryCount = {
           ...count,
           id: crypto.randomUUID(),
@@ -51,7 +77,7 @@ export function useInventory() {
       } else {
         const { data, error } = await supabase
           .from('inventory_counts')
-          .insert([count])
+          .insert([{ ...count, user_id: user?.id }])
           .select()
           .single();
         
@@ -67,7 +93,7 @@ export function useInventory() {
 
   const deleteCount = async (id: string) => {
     try {
-      if (USE_DEMO) {
+      if (isDemo) {
         const updated = counts.filter(c => c.id !== id);
         localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
         setCounts(updated);

@@ -5,7 +5,7 @@ import { LogOut, Package, Store, LayoutDashboard, Barcode, History as HistoryIco
 import { Link, useLocation } from 'react-router-dom';
 
 export default function Layout({ children }: { children: ReactNode }) {
-  const { user, signOut } = useAuth();
+  const { user, signOut, isDemo } = useAuth();
   const location = useLocation();
 
   const navItems = [
@@ -37,6 +37,12 @@ export default function Layout({ children }: { children: ReactNode }) {
                 {item.label}
               </Link>
             ))}
+            <div className="flex items-center gap-2 pl-4 border-l">
+              <div className={`h-2 w-2 rounded-full ${isDemo ? "bg-amber-500" : "bg-emerald-500"}`} />
+              <span className="text-xs font-medium text-muted-foreground">
+                {isDemo ? "Local" : "Cloud"}
+              </span>
+            </div>
           </nav>
 
           <div className="flex items-center gap-4">

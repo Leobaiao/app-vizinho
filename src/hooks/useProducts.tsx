@@ -1,23 +1,49 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
+import { useAuth } from './useAuth';
 import type { Product, ProductInsert, ProductUpdate } from '../types/product';
 
-const USE_DEMO = true; // Sincronizado com useAuth
 const STORAGE_KEY = 'vizinho_demo_products';
 
 export function useProducts() {
+  const { user, isDemo } = useAuth();
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     fetchProducts();
-  }, []);
+
+    // Sincronização em Tempo Real (Supabase Realtime)
+    if (!isDemo && user) {
+      const channel = supabase
+        .channel('products_changes')
+        .on('postgres_changes', { 
+          event: '*', 
+          schema: 'public', 
+          table: 'products',
+          filter: `user_id=eq.${user.id}` 
+        }, () => {
+          fetchProducts(); // Recarrega ao detectar mudança
+        })
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(channel);
+      };
+    }
+  }, [user, isDemo]);
 
   const fetchProducts = async () => {
+    if (!user && !isDemo) {
+      setProducts([]);
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     try {
-      if (USE_DEMO) {
+      if (isDemo) {
         const stored = localStorage.getItem(STORAGE_KEY);
         setProducts(stored ? JSON.parse(stored) : []);
       } else {
@@ -38,7 +64,7 @@ export function useProducts() {
 
   const addProduct = async (product: ProductInsert) => {
     try {
-      if (USE_DEMO) {
+      if (isDemo) {
         const newProduct: Product = {
           ...product,
           id: crypto.randomUUID(),
@@ -53,7 +79,7 @@ export function useProducts() {
       } else {
         const { data, error } = await supabase
           .from('products')
-          .insert([product])
+          .insert([{ ...product, user_id: user?.id }])
           .select()
           .single();
         
@@ -69,7 +95,7 @@ export function useProducts() {
 
   const updateProduct = async (id: string, updates: ProductUpdate) => {
     try {
-      if (USE_DEMO) {
+      if (isDemo) {
         const updated = products.map(p => 
           p.id === id ? { ...p, ...updates, updated_at: new Date().toISOString() } : p
         );
@@ -93,7 +119,7 @@ export function useProducts() {
 
   const deleteProduct = async (id: string) => {
     try {
-      if (USE_DEMO) {
+      if (isDemo) {
         const updated = products.filter(p => p.id !== id);
         localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
         setProducts(updated);

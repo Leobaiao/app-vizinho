@@ -7,7 +7,8 @@ import { Input } from './ui/Input';
 import { ImageUpload } from './ui/ImageUpload';
 import { BarcodeScanner } from './BarcodeScanner';
 import { calculateSellingPrice } from '../utils/pricing';
-import { Barcode, Tag, Save, X, Info } from 'lucide-react';
+import { fetchProductByBarcode, compressImageFromUrl } from '../utils/barcode';
+import { Barcode, Tag, Save, X, Info, Search, Loader2 } from 'lucide-react';
 import type { ProductInsert } from '../types/product';
 
 const productSchema = z.object({
@@ -37,6 +38,7 @@ export function ProductForm({ initialData, onSubmit, onCancel, loading }: Produc
   const [calculatedPrice, setCalculatedPrice] = useState(0);
   const [profitAmount, setProfitAmount] = useState(0);
   const [showScanner, setShowScanner] = useState(false);
+  const [isFetchingBarcode, setIsFetchingBarcode] = useState(false);
 
   const {
     register,
@@ -56,10 +58,17 @@ export function ProductForm({ initialData, onSubmit, onCancel, loading }: Produc
       payment_fees: initialData?.payment_fees || 0,
       fixed_costs: initialData?.fixed_costs || 0,
       market_price: initialData?.market_price || 0,
-      current_stock: initialData?.current_stock || 0,
-      min_stock: initialData?.min_stock || 0,
+      current_stock: (initialData as any)?.current_stock || 0,
+      min_stock: (initialData as any)?.min_stock || 0,
     },
   });
+
+  // Log de erros para ajudar no diagnóstico se o botão não funcionar
+  useEffect(() => {
+    if (Object.keys(errors).length > 0) {
+      console.log('Erros de validação do formulário:', errors);
+    }
+  }, [errors]);
 
   // Observar mudanças para atualizar a calculadora em tempo real
   const watchedFields = useWatch({ control });
@@ -76,9 +85,46 @@ export function ProductForm({ initialData, onSubmit, onCancel, loading }: Produc
     setProfitAmount(grossProfitAmount);
   }, [watchedFields]);
 
+  const handleBarcodeLookup = async (code: string) => {
+    if (!code || code.length < 8) return;
+    
+    setIsFetchingBarcode(true);
+    try {
+      const productData = await fetchProductByBarcode(code);
+      if (productData) {
+        // Só preenche se o campo estiver vazio para evitar sobrescrever
+        if (!watchedFields.name) setValue('name', productData.name);
+        if (!watchedFields.category && productData.category) setValue('category', productData.category);
+        if (!watchedFields.image_url && productData.image_url) {
+          try {
+            const base64Image = await compressImageFromUrl(productData.image_url);
+            setValue('image_url', base64Image);
+          } catch (e) {
+            console.error('Falha ao processar imagem da API:', e);
+            // Fallback: tenta usar a URL original se o canvas falhar (CORS)
+            setValue('image_url', productData.image_url);
+          }
+        }
+        
+        // Se houver marca, adiciona ao nome se não estiver lá
+        if (productData.brand && !watchedFields.name.toLowerCase().includes(productData.brand.toLowerCase())) {
+          const currentName = watchedFields.name || productData.name;
+          if (!currentName.toLowerCase().includes(productData.brand.toLowerCase())) {
+            setValue('name', `${productData.brand} - ${currentName}`);
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Erro ao buscar dados do produto:', error);
+    } finally {
+      setIsFetchingBarcode(false);
+    }
+  };
+
   const handleScan = (code: string) => {
     setValue('barcode', code);
     setShowScanner(false);
+    handleBarcodeLookup(code);
   };
 
   return (
@@ -102,6 +148,20 @@ export function ProductForm({ initialData, onSubmit, onCancel, loading }: Produc
             <X className="h-4 w-4 mr-2" /> Cancelar
           </Button>
         </div>
+
+        {/* Alerta de erro visível no celular */}
+        {Object.keys(errors).length > 0 && (
+          <div className="p-4 bg-destructive/10 border border-destructive/20 rounded-xl animate-shake">
+            <p className="text-sm font-bold text-destructive flex items-center gap-2">
+              <Info size={16} /> Verifique os campos em vermelho abaixo.
+            </p>
+            <ul className="mt-2 text-xs text-destructive/80 list-disc list-inside">
+              {Object.entries(errors).map(([key, error]) => (
+                <li key={key}>{(error as any).message || key}</li>
+              ))}
+            </ul>
+          </div>
+        )}
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           {/* Coluna 1: Básico e Foto */}
@@ -133,13 +193,30 @@ export function ProductForm({ initialData, onSubmit, onCancel, loading }: Produc
                       className="pr-10"
                       {...register('barcode')}
                     />
-                    <button 
-                      type="button" 
-                      onClick={() => setShowScanner(true)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-primary hover:text-primary/80"
-                    >
-                      <Barcode size={18} />
-                    </button>
+                    <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                      {isFetchingBarcode ? (
+                        <Loader2 size={18} className="animate-spin text-primary" />
+                      ) : (
+                        <>
+                          <button 
+                            type="button" 
+                            onClick={() => handleBarcodeLookup(watchedFields.barcode || '')}
+                            className="p-1 text-primary hover:bg-primary/10 rounded-md transition-colors"
+                            title="Buscar dados do produto"
+                          >
+                            <Search size={18} />
+                          </button>
+                          <button 
+                            type="button" 
+                            onClick={() => setShowScanner(true)}
+                            className="p-1 text-primary hover:bg-primary/10 rounded-md transition-colors"
+                            title="Escanear código"
+                          >
+                            <Barcode size={18} />
+                          </button>
+                        </>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -149,6 +226,7 @@ export function ProductForm({ initialData, onSubmit, onCancel, loading }: Produc
                   label="Estoque Atual"
                   type="number"
                   {...register('current_stock', { valueAsNumber: true })}
+                  error={errors.current_stock?.message}
                 />
                 <Input
                   label="Aviso Estoque Mín."

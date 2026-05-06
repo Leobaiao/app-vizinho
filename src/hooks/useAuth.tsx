@@ -6,42 +6,50 @@ interface AuthContextType {
   user: User | null;
   session: Session | null;
   loading: boolean;
+  isDemo: boolean;
   signOut: () => Promise<void>;
-  signInDemo?: () => void;
+  signInDemo: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const USE_DEMO = true; // Altere para false quando configurar o Supabase
-
 const MOCK_USER = {
   id: 'demo-user-id',
-  email: 'demo@vizinho.com',
-  user_metadata: { full_name: 'Usuário Demo' },
+  email: 'ola@mercadovizinho.com.br',
+  user_metadata: { full_name: 'Equipe Vizinho' },
 } as any;
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(USE_DEMO ? MOCK_USER : null);
+  const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
-  const [loading, setLoading] = useState(!USE_DEMO);
+  const [loading, setLoading] = useState(true);
+  const [isDemo, setIsDemo] = useState(false);
 
   useEffect(() => {
-    if (USE_DEMO) {
+    // 1. Verificar se estava no modo demo
+    const wasDemo = localStorage.getItem('vizinho_is_demo') === 'true';
+    if (wasDemo) {
+      setUser(MOCK_USER);
+      setIsDemo(true);
       setLoading(false);
-      return;
     }
 
-    // Check active sessions and sets the user
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      setLoading(false);
-    });
-
-    // Listen for changes on auth state (logged in, signed out, etc.)
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-      setUser(session?.user ?? null);
+    // 2. Escutar mudanças de autenticação (inclui a carga inicial da sessão)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, currentSession) => {
+      console.log('Auth Event:', event);
+      
+      if (currentSession) {
+        setSession(currentSession);
+        setUser(currentSession.user);
+        setIsDemo(false);
+        localStorage.removeItem('vizinho_is_demo');
+      } else if (!wasDemo) {
+        // Só limpa o usuário se não estivermos no modo demo
+        setSession(null);
+        setUser(null);
+        setIsDemo(false);
+      }
+      
       setLoading(false);
     });
 
@@ -49,14 +57,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signOut = async () => {
-    if (USE_DEMO) {
-      setUser(null);
-      return;
-    }
+    setLoading(true);
+    localStorage.removeItem('vizinho_is_demo');
+    setIsDemo(false);
     await supabase.auth.signOut();
+    setUser(null);
+    setSession(null);
+    setLoading(false);
   };
 
   const signInDemo = () => {
+    localStorage.setItem('vizinho_is_demo', 'true');
+    setIsDemo(true);
     setUser(MOCK_USER);
   };
 
@@ -64,8 +76,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     user,
     session,
     loading,
+    isDemo,
     signOut,
-    signInDemo, // Adicionado para facilitar o login no modo demo
+    signInDemo,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

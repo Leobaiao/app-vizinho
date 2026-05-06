@@ -19,6 +19,7 @@ export default function Login() {
   const [isLogin, setIsLogin] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { signInDemo } = useAuth();
 
   const {
     register,
@@ -33,8 +34,6 @@ export default function Login() {
     setError(null);
 
     try {
-      const { signInDemo } = useAuth(); // Importado do hook
-
       if (isLogin) {
         // Tentativa real com Supabase
         const { error } = await supabase.auth.signInWithPassword({
@@ -44,8 +43,8 @@ export default function Login() {
         
         // Se falhar (ex: sem banco), tenta o modo demo se as credenciais baterem
         if (error) {
-          if (data.email === 'demo@vizinho.com' && data.password === '123456') {
-            signInDemo?.();
+          if (data.email === 'ola@mercadovizinho.com.br' && data.password === 'Appdovizinho2026#@') {
+            signInDemo();
             return;
           }
           throw error;
@@ -61,7 +60,7 @@ export default function Login() {
     } catch (err: any) {
       setError(
         err.message?.includes('failed to fetch') 
-          ? 'Erro de conexão. Tente e-mail: demo@vizinho.com / senha: 123456' 
+          ? 'Erro de conexão. Use o acesso padrão do Vizinho.' 
           : err.message || 'Erro na autenticação'
       );
     } finally {

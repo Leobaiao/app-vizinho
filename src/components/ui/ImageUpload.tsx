@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Camera, Image as ImageIcon, X } from 'lucide-react';
 import { Button } from './Button';
 
@@ -11,6 +11,11 @@ interface ImageUploadProps {
 export function ImageUpload({ value, onChange, onFileSelect }: ImageUploadProps) {
   const [preview, setPreview] = useState<string | undefined>(value);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Sincronizar preview quando o valor mudar externamente (ex: via API de código de barras)
+  useEffect(() => {
+    setPreview(value);
+  }, [value]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];

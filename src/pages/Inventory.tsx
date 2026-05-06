@@ -14,7 +14,7 @@ export default function Inventory() {
   const [lastScanned, setLastScanned] = useState<any>(null);
   const [showReport, setShowReport] = useState(false);
 
-  // Controle do Modal
+  const [isProcessing, setIsProcessing] = useState(false);
   const [modal, setModal] = useState<{
     isOpen: boolean;
     title: string;
@@ -27,22 +27,26 @@ export default function Inventory() {
   const closeModal = () => setModal(prev => ({ ...prev, isOpen: false }));
 
   const handleScan = async (code: string) => {
-    // Não fechamos mais o scanner! O modo agora é "Contínuo".
-    // O debounce no BarcodeScanner impede múltiplas leituras em menos de 2.5s.
+    if (isProcessing) return;
     
     // Normalizar removendo espaços e ZEROS à esquerda
     const cleanScannedCode = String(code).trim().replace(/^0+/, '');
     const product = products.find(p => String(p.barcode || '').trim().replace(/^0+/, '') === cleanScannedCode);
     
     if (product) {
-      const newCount = await addCount({
-        product_id: product.id,
-        counted_quantity: 1,
-        expected_quantity: product.current_stock,
-      });
-      
-      if (newCount) {
-        setLastScanned({ ...product, timestamp: new Date().toLocaleTimeString() });
+      setIsProcessing(true);
+      try {
+        const newCount = await addCount({
+          product_id: product.id,
+          counted_quantity: 1,
+          expected_quantity: product.current_stock,
+        });
+        
+        if (newCount) {
+          setLastScanned({ ...product, timestamp: new Date().toLocaleTimeString() });
+        }
+      } finally {
+        setIsProcessing(false);
       }
     } else {
       setModal({
