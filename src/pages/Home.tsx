@@ -211,7 +211,7 @@ export default function Home() {
                   <Tooltip 
                     cursor={{ fill: 'hsl(var(--muted))', opacity: 0.4 }} 
                     contentStyle={{ borderRadius: '12px', border: '1px solid hsl(var(--border))', backgroundColor: 'hsl(var(--card))', color: 'hsl(var(--foreground))', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
-                    formatter={(value: number) => [`R$ ${value.toFixed(2)}`, 'Investido']}
+                    formatter={(value: any) => [`R$ ${Number(value).toFixed(2)}`, 'Investido']}
                   />
                   <Bar 
                     dataKey="value" 
@@ -259,7 +259,7 @@ export default function Home() {
                   </Pie>
                   <Tooltip 
                     contentStyle={{ borderRadius: '12px', border: '1px solid hsl(var(--border))', backgroundColor: 'hsl(var(--card))' }}
-                    formatter={(value: number) => [`R$ ${value.toFixed(2)}`, 'Valor']}
+                    formatter={(value: any) => [`R$ ${Number(value).toFixed(2)}`, 'Valor']}
                   />
                 </PieChart>
               </ResponsiveContainer>

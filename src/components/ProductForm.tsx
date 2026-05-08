@@ -107,9 +107,9 @@ export function ProductForm({ initialData, onSubmit, onCancel, loading }: Produc
         }
         
         // Se houver marca, adiciona ao nome se não estiver lá
-        if (productData.brand && !watchedFields.name.toLowerCase().includes(productData.brand.toLowerCase())) {
+        if (productData.brand && !watchedFields.name?.toLowerCase().includes(productData.brand.toLowerCase())) {
           const currentName = watchedFields.name || productData.name;
-          if (!currentName.toLowerCase().includes(productData.brand.toLowerCase())) {
+          if (currentName && !currentName.toLowerCase().includes(productData.brand.toLowerCase())) {
             setValue('name', `${productData.brand} - ${currentName}`);
           }
         }

@@ -1,6 +1,6 @@
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from './Button';
-import { AlertTriangle, CheckCircle2, Info, X } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Info } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 
@@ -78,7 +78,7 @@ export function Modal({
                   </Button>
                   {onAction && (
                     <Button 
-                      variant={variant === 'danger' ? 'destructive' : 'default'}
+                      variant={variant === 'danger' ? 'destructive' : 'primary'}
                       onClick={() => {
                         onAction();
                         onClose();
