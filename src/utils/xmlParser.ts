@@ -4,6 +4,8 @@ export interface NFeItem {
   quantity: number;
   unitPrice: number;
   supplierCode: string;
+  batch?: string;
+  expiry?: string;
 }
 
 export function parseNFeXML(xmlString: string): NFeItem[] {
@@ -24,6 +26,11 @@ export function parseNFeXML(xmlString: string): NFeItem[] {
       const unitPrice = parseFloat(prod.getElementsByTagName("vUnCom")[0]?.textContent || "0");
       const supplierCode = prod.getElementsByTagName("cProd")[0]?.textContent || "";
 
+      // Tentar capturar informações de lote/validade (tag rastro)
+      const rastro = itemsNodes[i].getElementsByTagName("rastro")[0];
+      const batch = rastro?.getElementsByTagName("nLote")[0]?.textContent || undefined;
+      const expiry = rastro?.getElementsByTagName("dVal")[0]?.textContent || undefined;
+
       // Só adicionamos se tiver um nome válido
       if (name) {
         parsedItems.push({
@@ -31,7 +38,9 @@ export function parseNFeXML(xmlString: string): NFeItem[] {
           barcode: barcode === "SEM GTIN" ? "" : barcode,
           quantity,
           unitPrice,
-          supplierCode
+          supplierCode,
+          batch,
+          expiry
         });
       }
     }
@@ -39,3 +48,4 @@ export function parseNFeXML(xmlString: string): NFeItem[] {
 
   return parsedItems;
 }
+

@@ -21,8 +21,14 @@ const productSchema = z.object({
   payment_fees: z.number().min(0),
   fixed_costs: z.number().min(0),
   market_price: z.number().optional(),
+  market_costs: z.array(z.object({
+    price: z.number().min(0),
+    location: z.string().min(1, 'Local obrigatório')
+  })).max(5).optional(),
   current_stock: z.number().min(0),
   min_stock: z.number().min(0).optional(),
+  batch_number: z.string().optional(),
+  expiry_date: z.string().optional(),
 });
 
 type ProductFormData = z.infer<typeof productSchema>;
@@ -58,8 +64,11 @@ export function ProductForm({ initialData, onSubmit, onCancel, loading }: Produc
       payment_fees: initialData?.payment_fees || 0,
       fixed_costs: initialData?.fixed_costs || 0,
       market_price: initialData?.market_price || 0,
+      market_costs: (initialData as any)?.market_costs || [],
       current_stock: (initialData as any)?.current_stock || 0,
       min_stock: (initialData as any)?.min_stock || 0,
+      batch_number: (initialData as any)?.batch_number || '',
+      expiry_date: (initialData as any)?.expiry_date || '',
     },
   });
 
@@ -235,6 +244,22 @@ export function ProductForm({ initialData, onSubmit, onCancel, loading }: Produc
                   {...register('min_stock', { valueAsNumber: true })}
                 />
               </div>
+
+              <div className="grid grid-cols-2 gap-4 p-4 bg-amber-500/5 border border-amber-500/10 rounded-xl">
+                <Input
+                  label="Lote"
+                  placeholder="Ex: L123"
+                  {...register('batch_number')}
+                />
+                <Input
+                  label="Data de Validade"
+                  type="date"
+                  {...register('expiry_date')}
+                />
+                <p className="col-span-2 text-[10px] text-amber-600 font-medium">
+                  * Estes campos ajudam a controlar o que deve ser vendido primeiro (FEFO).
+                </p>
+              </div>
             </div>
           </div>
 
@@ -301,7 +326,52 @@ export function ProductForm({ initialData, onSubmit, onCancel, loading }: Produc
             placeholder="Opcional"
             {...register('market_price', { valueAsNumber: true })}
           />
+
+          <div className="space-y-4 pt-4 border-t border-secondary/50">
+            <div className="flex items-center justify-between">
+
+              <div className="flex items-center gap-2">
+                <div className="p-1.5 rounded-lg bg-blue-500 text-white">
+                  <Search size={14} />
+                </div>
+                <label className="text-sm font-bold">Outros Custos / Mercado</label>
+              </div>
+              <span className="text-[10px] text-muted-foreground uppercase font-bold bg-muted px-2 py-0.5 rounded">Máx 5</span>
+            </div>
+            
+            <div className="space-y-3">
+              {[0, 1, 2, 3, 4].map((index) => (
+                <div key={index} className="flex gap-2 items-center group">
+                  <div className="w-8 h-8 rounded-full bg-secondary/30 flex items-center justify-center text-[10px] font-bold text-muted-foreground group-focus-within:bg-primary/20 group-focus-within:text-primary transition-colors">
+                    {index + 1}
+                  </div>
+                  <div className="grid grid-cols-5 gap-2 flex-1">
+                    <div className="col-span-2">
+                      <Input
+                        placeholder="Preço R$"
+                        type="number"
+                        step="0.01"
+                        className="h-9 text-sm"
+                        {...register(`market_costs.${index}.price` as any, { valueAsNumber: true })}
+                      />
+                    </div>
+                    <div className="col-span-3">
+                      <Input
+                        placeholder="Local / Fornecedor"
+                        className="h-9 text-sm"
+                        {...register(`market_costs.${index}.location` as any)}
+                      />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <p className="text-[10px] text-muted-foreground leading-tight italic">
+              * Registre aqui os preços que você encontrou em outros locais para comparar com o seu custo.
+            </p>
+          </div>
         </div>
+
       </div>
 
       <div className="flex justify-end gap-4 pt-6 border-t">
