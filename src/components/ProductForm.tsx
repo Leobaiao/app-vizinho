@@ -151,9 +151,14 @@ export function ProductForm({ initialData, onSubmit, onCancel, loading }: Produc
 
           onSubmit({
             ...data,
+            category: data.category === '' ? null : data.category,
+            expiry_date: data.expiry_date === '' ? null : data.expiry_date,
+            batch_number: data.batch_number === '' ? null : data.batch_number,
+            market_price: isNaN(data.market_price as any) ? null : data.market_price,
+            min_stock: isNaN(data.min_stock as any) ? 0 : data.min_stock,
             market_costs: cleanedMarketCosts,
             selling_price: calculatedPrice,
-          } as ProductInsert);
+          } as any);
         })} 
         className="space-y-8 animate-in slide-in-from-right duration-300"
       >
