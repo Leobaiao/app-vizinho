@@ -22,8 +22,8 @@ const productSchema = z.object({
   fixed_costs: z.number().min(0),
   market_price: z.number().optional(),
   market_costs: z.array(z.object({
-    price: z.number().min(0),
-    location: z.string().min(1, 'Local obrigatório')
+    price: z.number().optional().or(z.nan()),
+    location: z.string().optional()
   })).max(5).optional(),
   current_stock: z.number().min(0),
   min_stock: z.number().min(0).optional(),
@@ -144,8 +144,14 @@ export function ProductForm({ initialData, onSubmit, onCancel, loading }: Produc
       
       <form 
         onSubmit={handleSubmit((data) => {
+          // Limpar os campos opcionais que vieram vazios
+          const cleanedMarketCosts = data.market_costs?.filter(
+            cost => cost && typeof cost.price === 'number' && !isNaN(cost.price) && cost.location && cost.location.trim() !== ''
+          ) || [];
+
           onSubmit({
             ...data,
+            market_costs: cleanedMarketCosts,
             selling_price: calculatedPrice,
           } as ProductInsert);
         })} 
