@@ -418,9 +418,9 @@ function SessionDetails({ session, products, onClose, onAdjust, onExport, getIte
         </div>
       </div>
 
-      <div className="fixed bottom-6 left-6 right-6 flex gap-3">
-        <Button variant="outline" className="flex-1 h-12" onClick={onClose}>Fechar</Button>
-        <Button className="flex-[2] h-12 bg-amber-600 hover:bg-amber-700" onClick={onAdjust}>
+      <div className="fixed bottom-24 left-6 right-6 flex gap-3 z-10">
+        <Button variant="outline" className="flex-1 h-12 bg-background/80 backdrop-blur-sm" onClick={onClose}>Fechar</Button>
+        <Button className="flex-[2] h-12 bg-amber-600 hover:bg-amber-700 shadow-lg" onClick={onAdjust}>
           <Settings2 className="mr-2 h-4 w-4" /> Ajustar Estoque
         </Button>
       </div>
