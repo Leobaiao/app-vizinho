@@ -9,6 +9,48 @@ import { Modal } from '../components/ui/Modal';
 import { Plus, Search, Package, Edit2, Trash2, Barcode } from 'lucide-react';
 import type { ProductInsert } from '../types/product';
 
+const getExpiryAlertDetails = (product: any) => {
+  const nextBatch = product.product_batches?.[0];
+  const expiryDateStr = nextBatch?.expiry_date || product.expiry_date;
+  const batchNumber = nextBatch?.batch_number || product.batch_number;
+
+  if (!expiryDateStr) return null;
+
+  const expiryDate = new Date(expiryDateStr);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  
+  const diffTime = expiryDate.getTime() - today.getTime();
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+  let colorClass = "";
+  let text = "";
+
+  if (diffDays < 0) {
+    colorClass = "bg-destructive/10 text-destructive border-destructive/20";
+    text = `Vencido há ${Math.abs(diffDays)} ${Math.abs(diffDays) === 1 ? 'dia' : 'dias'}`;
+  } else if (diffDays === 0) {
+    colorClass = "bg-destructive/10 text-destructive border-destructive/20 animate-pulse";
+    text = "Vence hoje!";
+  } else if (diffDays <= 7) {
+    colorClass = "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20";
+    text = `Vence em ${diffDays} ${diffDays === 1 ? 'dia' : 'dias'}`;
+  } else if (diffDays <= 30) {
+    colorClass = "bg-yellow-500/10 text-yellow-700 dark:text-yellow-400 border-yellow-500/20";
+    text = `Vence em ${diffDays} dias`;
+  } else {
+    colorClass = "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20";
+    text = `Vence em ${diffDays} dias`;
+  }
+
+  return {
+    text,
+    colorClass,
+    batchNumber,
+    expiryDate: expiryDate.toLocaleDateString('pt-BR')
+  };
+};
+
 export default function Products() {
   const { products, loading, addProduct, updateProduct, deleteProduct } = useProducts();
   const [searchTerm, setSearchTerm] = useState('');
@@ -142,49 +184,59 @@ export default function Products() {
         </Card>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filteredProducts.map((product) => (
-            <Card key={product.id} className="group hover:border-primary/50 transition-colors">
-              <div className="p-4 flex gap-4">
-                <div className="h-20 w-20 rounded-lg bg-muted flex items-center justify-center overflow-hidden flex-shrink-0">
-                  {product.image_url ? (
-                    <img src={product.image_url} alt={product.name} className="h-full w-full object-cover" />
-                  ) : (
-                    <Package className="text-muted-foreground" />
-                  )}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <h4 className="font-bold text-lg truncate">{product.name}</h4>
-                  <p className="text-sm text-muted-foreground truncate">{product.category || 'Sem categoria'}</p>
-                  <div className="mt-2 flex items-baseline gap-2">
-                    <span className="text-xl font-bold text-primary">
-                      R$ {product.selling_price?.toFixed(2) || '0,00'}
-                    </span>
-                    <span className="text-xs text-muted-foreground">
-                      Custo: R$ {product.cost_price.toFixed(2)}
-                    </span>
+          {filteredProducts.map((product) => {
+            const expiryAlert = getExpiryAlertDetails(product);
+            return (
+              <Card key={product.id} className="group hover:border-primary/50 transition-colors">
+                <div className="p-4 flex gap-4">
+                  <div className="h-20 w-20 rounded-lg bg-muted flex items-center justify-center overflow-hidden flex-shrink-0">
+                    {product.image_url ? (
+                      <img src={product.image_url} alt={product.name} className="h-full w-full object-cover" />
+                    ) : (
+                      <Package className="text-muted-foreground" />
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0 flex flex-col justify-between">
+                    <div>
+                      <h4 className="font-bold text-lg truncate">{product.name}</h4>
+                      <p className="text-sm text-muted-foreground truncate">{product.category || 'Sem categoria'}</p>
+                      <div className="mt-1 flex items-baseline gap-2">
+                        <span className="text-xl font-bold text-primary">
+                          R$ {product.selling_price?.toFixed(2) || '0,00'}
+                        </span>
+                        <span className="text-xs text-muted-foreground">
+                          Custo: R$ {product.cost_price.toFixed(2)}
+                        </span>
+                      </div>
+                    </div>
+                    {expiryAlert && (
+                      <div className={`mt-2 inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold border w-fit ${expiryAlert.colorClass}`}>
+                        <span>Lote: {expiryAlert.batchNumber || 'N/I'} • {expiryAlert.text}</span>
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    <Button 
+                      variant="ghost" 
+                      size="icon" 
+                      className="h-8 w-8 text-muted-foreground hover:text-primary"
+                      onClick={() => setEditingProduct(product)}
+                    >
+                      <Edit2 className="h-4 w-4" />
+                    </Button>
+                    <Button 
+                      variant="ghost" 
+                      size="icon" 
+                      className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                      onClick={() => confirmDelete(product)}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
                   </div>
                 </div>
-                <div className="flex flex-col gap-2">
-                  <Button 
-                    variant="ghost" 
-                    size="icon" 
-                    className="h-8 w-8 text-muted-foreground hover:text-primary"
-                    onClick={() => setEditingProduct(product)}
-                  >
-                    <Edit2 className="h-4 w-4" />
-                  </Button>
-                  <Button 
-                    variant="ghost" 
-                    size="icon" 
-                    className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                    onClick={() => confirmDelete(product)}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-            </Card>
-          ))}
+              </Card>
+            );
+          })}
         </div>
       )}
     </div>

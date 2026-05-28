@@ -44,16 +44,37 @@ export function useProducts() {
     setLoading(true);
     try {
       if (isDemo) {
-        const stored = localStorage.getItem(STORAGE_KEY);
-        setProducts(stored ? JSON.parse(stored) : []);
+        const storedProducts = localStorage.getItem(STORAGE_KEY);
+        const storedBatches = localStorage.getItem('vizinho_demo_product_batches');
+        const parsedProducts: Product[] = storedProducts ? JSON.parse(storedProducts) : [];
+        const parsedBatches: any[] = storedBatches ? JSON.parse(storedBatches) : [];
+        
+        const mergedProducts = parsedProducts.map(p => {
+          const batchesForProduct = parsedBatches
+            .filter(b => b.product_id === p.id)
+            .sort((a, b) => new Date(a.expiry_date).getTime() - new Date(b.expiry_date).getTime());
+          return {
+            ...p,
+            product_batches: batchesForProduct
+          };
+        });
+        setProducts(mergedProducts);
       } else {
         const { data, error } = await supabase
           .from('products')
-          .select('*')
+          .select('*, product_batches(*)')
           .order('name');
         
         if (error) throw error;
-        setProducts(data || []);
+
+        const mergedProducts = (data || []).map(p => ({
+          ...p,
+          product_batches: (p.product_batches || []).sort(
+            (a: any, b: any) => new Date(a.expiry_date).getTime() - new Date(b.expiry_date).getTime()
+          )
+        }));
+        
+        setProducts(mergedProducts);
       }
     } catch (err: any) {
       setError(err.message);
@@ -62,30 +83,70 @@ export function useProducts() {
     }
   };
 
-  const addProduct = async (product: ProductInsert) => {
+  const addProduct = async (productData: ProductInsert & { batches?: any[] }) => {
+    const { batches, ...product } = productData;
     try {
       if (isDemo) {
+        const productId = crypto.randomUUID();
+        const demoBatches = (batches || []).map(b => ({
+          id: crypto.randomUUID(),
+          product_id: productId,
+          batch_number: b.batch_number,
+          expiry_date: b.expiry_date,
+          quantity: Number(b.quantity || 0),
+          created_at: new Date().toISOString()
+        }));
+
         const newProduct: Product = {
           ...product,
-          id: crypto.randomUUID(),
+          id: productId,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
+          product_batches: demoBatches
         } as Product;
-        
-        const updated = [...products, newProduct];
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
-        setProducts(updated);
+
+        const storedBatches = localStorage.getItem('vizinho_demo_product_batches');
+        const parsedBatches = storedBatches ? JSON.parse(storedBatches) : [];
+        const updatedBatches = [...parsedBatches, ...demoBatches];
+        localStorage.setItem('vizinho_demo_product_batches', JSON.stringify(updatedBatches));
+
+        const updatedProducts = [...products, newProduct];
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedProducts.map(({ product_batches, ...p }: any) => p)));
+        setProducts(updatedProducts);
         return newProduct;
       } else {
-        const { data, error } = await supabase
+        const { data: newProd, error: prodError } = await supabase
           .from('products')
           .insert([{ ...product, user_id: user?.id }])
           .select()
           .single();
         
-        if (error) throw error;
-        setProducts([...products, data]);
-        return data;
+        if (prodError) throw prodError;
+
+        let insertedBatches: any[] = [];
+        if (batches && batches.length > 0) {
+          const dbBatches = batches.map(b => ({
+            product_id: newProd.id,
+            batch_number: b.batch_number,
+            expiry_date: b.expiry_date,
+            quantity: Number(b.quantity || 0)
+          }));
+          const { data: batchData, error: batchError } = await supabase
+            .from('product_batches')
+            .insert(dbBatches)
+            .select();
+          if (batchError) throw batchError;
+          insertedBatches = batchData || [];
+        }
+
+        const newProductWithBatches = {
+          ...newProd,
+          product_batches: insertedBatches.sort(
+            (a, b) => new Date(a.expiry_date).getTime() - new Date(b.expiry_date).getTime()
+          )
+        };
+        setProducts([...products, newProductWithBatches]);
+        return newProductWithBatches;
       }
     } catch (err: any) {
       setError(err.message);
@@ -93,22 +154,101 @@ export function useProducts() {
     }
   };
 
-  const updateProduct = async (id: string, updates: ProductUpdate) => {
+  const updateProduct = async (id: string, updateData: ProductUpdate & { batches?: any[] }) => {
+    const { batches, ...updates } = updateData;
     try {
       if (isDemo) {
-        const updated = products.map(p => 
-          p.id === id ? { ...p, ...updates, updated_at: new Date().toISOString() } : p
-        );
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
-        setProducts(updated);
+        let updatedBatchesList: any[] = [];
+        const storedBatches = localStorage.getItem('vizinho_demo_product_batches');
+        const parsedBatches = storedBatches ? JSON.parse(storedBatches) : [];
+        
+        // Remove os lotes antigos do produto
+        let remainingBatches = parsedBatches.filter((b: any) => b.product_id !== id);
+        
+        if (batches) {
+          const newDemoBatches = batches.map(b => ({
+            id: b.id || crypto.randomUUID(),
+            product_id: id,
+            batch_number: b.batch_number,
+            expiry_date: b.expiry_date,
+            quantity: Number(b.quantity || 0),
+            created_at: b.created_at || new Date().toISOString()
+          }));
+          remainingBatches = [...remainingBatches, ...newDemoBatches];
+          updatedBatchesList = newDemoBatches.sort(
+            (a, b) => new Date(a.expiry_date).getTime() - new Date(b.expiry_date).getTime()
+          );
+          localStorage.setItem('vizinho_demo_product_batches', JSON.stringify(remainingBatches));
+        } else {
+          updatedBatchesList = parsedBatches
+            .filter((b: any) => b.product_id === id)
+            .sort((a: any, b: any) => new Date(a.expiry_date).getTime() - new Date(b.expiry_date).getTime());
+        }
+
+        const updatedProducts = products.map(p => {
+          if (p.id === id) {
+            const updatedProd = {
+              ...p,
+              ...updates,
+              updated_at: new Date().toISOString(),
+            };
+            // Se informamos lotes, atualiza a lista interna
+            if (batches) {
+              updatedProd.product_batches = updatedBatchesList;
+            }
+            return updatedProd;
+          }
+          return p;
+        });
+
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedProducts.map(({ product_batches, ...p }: any) => p)));
+        setProducts(updatedProducts);
       } else {
-        const { error } = await supabase
+        const { error: prodError } = await supabase
           .from('products')
           .update(updates)
           .eq('id', id);
         
-        if (error) throw error;
-        setProducts(products.map(p => p.id === id ? { ...p, ...updates } : p));
+        if (prodError) throw prodError;
+
+        let finalBatches = batches;
+        if (batches) {
+          // Deleta lotes anteriores
+          const { error: deleteError } = await supabase
+            .from('product_batches')
+            .delete()
+            .eq('product_id', id);
+          if (deleteError) throw deleteError;
+
+          // Insere novos lotes
+          if (batches.length > 0) {
+            const dbBatches = batches.map(b => ({
+              product_id: id,
+              batch_number: b.batch_number,
+              expiry_date: b.expiry_date,
+              quantity: Number(b.quantity || 0)
+            }));
+            const { data: batchData, error: insertError } = await supabase
+              .from('product_batches')
+              .insert(dbBatches)
+              .select();
+            if (insertError) throw insertError;
+            finalBatches = batchData || [];
+          }
+        }
+
+        setProducts(products.map(p => {
+          if (p.id === id) {
+            const updatedProd = { ...p, ...updates };
+            if (batches) {
+              updatedProd.product_batches = (finalBatches || []).sort(
+                (a: any, b: any) => new Date(a.expiry_date).getTime() - new Date(b.expiry_date).getTime()
+              );
+            }
+            return updatedProd;
+          }
+          return p;
+        }));
       }
       return true;
     } catch (err: any) {
@@ -122,6 +262,14 @@ export function useProducts() {
       if (isDemo) {
         const updated = products.filter(p => p.id !== id);
         localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+        
+        const storedBatches = localStorage.getItem('vizinho_demo_product_batches');
+        if (storedBatches) {
+          const parsedBatches = JSON.parse(storedBatches);
+          const filteredBatches = parsedBatches.filter((b: any) => b.product_id !== id);
+          localStorage.setItem('vizinho_demo_product_batches', JSON.stringify(filteredBatches));
+        }
+        
         setProducts(updated);
       } else {
         const { error } = await supabase

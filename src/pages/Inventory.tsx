@@ -134,7 +134,47 @@ export default function Inventory() {
       onAction: async () => {
         setIsProcessing(true);
         for (const item of discrepancies) {
-          await updateProduct(item.product_id, { current_stock: item.counted_quantity });
+          const product = products.find(p => p.id === item.product_id);
+          if (product) {
+            const productBatches = product.product_batches || [];
+            
+            if (productBatches.length > 0) {
+              let remaining = item.counted_quantity;
+              const sortedBatches = [...productBatches].sort(
+                (a: any, b: any) => new Date(a.expiry_date).getTime() - new Date(b.expiry_date).getTime()
+              );
+              
+              const updatedBatches = sortedBatches.map((batch: any, idx: number) => {
+                if (idx === sortedBatches.length - 1) {
+                  const qty = Math.max(0, remaining);
+                  remaining = 0;
+                  return { ...batch, quantity: qty };
+                } else {
+                  const qty = Math.min(Number(batch.quantity || 0), remaining);
+                  remaining -= qty;
+                  return { ...batch, quantity: qty };
+                }
+              });
+
+              // Determinar lote FEFO ativo principal
+              const activeBatches = updatedBatches.filter((b: any) => Number(b.quantity || 0) > 0);
+              const sortedActive = [...activeBatches].sort(
+                (a, b) => new Date(a.expiry_date).getTime() - new Date(b.expiry_date).getTime()
+              );
+              const mainBatchNumber = sortedActive[0]?.batch_number || sortedBatches[0]?.batch_number || null;
+              const mainExpiryDate = sortedActive[0]?.expiry_date || sortedBatches[0]?.expiry_date || null;
+
+              await updateProduct(item.product_id, {
+                current_stock: item.counted_quantity,
+                batch_number: mainBatchNumber,
+                expiry_date: mainExpiryDate,
+                batches: updatedBatches
+              });
+            } else {
+              // Produto sem lotes
+              await updateProduct(item.product_id, { current_stock: item.counted_quantity });
+            }
+          }
         }
         setIsProcessing(false);
         setModal({

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useForm, useWatch } from 'react-hook-form';
+import { useForm, useWatch, useFieldArray } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { Button } from './ui/Button';
@@ -29,13 +29,18 @@ const productSchema = z.object({
   min_stock: z.number().min(0).optional(),
   batch_number: z.string().optional(),
   expiry_date: z.string().optional(),
+  batches: z.array(z.object({
+    batch_number: z.string().min(1, 'Número do lote obrigatório'),
+    expiry_date: z.string().min(1, 'Data de validade obrigatória'),
+    quantity: z.number().min(0, 'Quantidade não pode ser negativa')
+  })).optional(),
 });
 
 type ProductFormData = z.infer<typeof productSchema>;
 
 interface ProductFormProps {
-  initialData?: Partial<ProductFormData>;
-  onSubmit: (data: ProductInsert) => void;
+  initialData?: any; // Alterado para any para aceitar product_batches
+  onSubmit: (data: ProductInsert & { batches?: any[] }) => void;
   onCancel: () => void;
   loading?: boolean;
 }
@@ -69,8 +74,31 @@ export function ProductForm({ initialData, onSubmit, onCancel, loading }: Produc
       min_stock: (initialData as any)?.min_stock || 0,
       batch_number: (initialData as any)?.batch_number || '',
       expiry_date: (initialData as any)?.expiry_date || '',
+      batches: (initialData as any)?.product_batches || (initialData as any)?.batches || [],
     },
   });
+
+  const { fields: marketCostFields, append: appendMarketCost, remove: removeMarketCost } = useFieldArray({
+    control,
+    name: 'market_costs'
+  });
+
+  const { fields: batchFields, append: appendBatch, remove: removeBatch } = useFieldArray({
+    control,
+    name: 'batches'
+  });
+
+  const watchedBatches = useWatch({ control, name: 'batches' });
+
+  useEffect(() => {
+    if (watchedBatches && watchedBatches.length > 0) {
+      const total = watchedBatches.reduce((acc: number, batch: any) => {
+        const qty = Number(batch?.quantity || 0);
+        return acc + (isNaN(qty) ? 0 : qty);
+      }, 0);
+      setValue('current_stock', total);
+    }
+  }, [watchedBatches, setValue]);
 
   // Log de erros para ajudar no diagnóstico se o botão não funcionar
   useEffect(() => {
@@ -149,15 +177,32 @@ export function ProductForm({ initialData, onSubmit, onCancel, loading }: Produc
             cost => cost && typeof cost.price === 'number' && !isNaN(cost.price) && cost.location && cost.location.trim() !== ''
           ) || [];
 
+          const cleanedBatches = data.batches?.filter(
+            batch => batch && batch.batch_number && batch.batch_number.trim() !== '' && batch.expiry_date
+          ) || [];
+
+          // Regra FEFO: Lote mais próximo da validade define o lote principal do produto
+          let mainBatchNumber = data.batch_number === '' ? null : data.batch_number;
+          let mainExpiryDate = data.expiry_date === '' ? null : data.expiry_date;
+
+          if (cleanedBatches.length > 0) {
+            const sortedBatches = [...cleanedBatches].sort(
+              (a, b) => new Date(a.expiry_date).getTime() - new Date(b.expiry_date).getTime()
+            );
+            mainBatchNumber = sortedBatches[0].batch_number;
+            mainExpiryDate = sortedBatches[0].expiry_date;
+          }
+
           onSubmit({
             ...data,
             category: data.category === '' ? null : data.category,
-            expiry_date: data.expiry_date === '' ? null : data.expiry_date,
-            batch_number: data.batch_number === '' ? null : data.batch_number,
+            expiry_date: mainExpiryDate,
+            batch_number: mainBatchNumber,
             market_price: isNaN(data.market_price as any) ? null : data.market_price,
             min_stock: isNaN(data.min_stock as any) ? 0 : data.min_stock,
             market_costs: cleanedMarketCosts,
             selling_price: calculatedPrice,
+            batches: cleanedBatches,
           } as any);
         })} 
         className="space-y-8 animate-in slide-in-from-right duration-300"
@@ -242,12 +287,21 @@ export function ProductForm({ initialData, onSubmit, onCancel, loading }: Produc
               </div>
 
               <div className="grid grid-cols-2 gap-4">
-                <Input
-                  label="Estoque Atual"
-                  type="number"
-                  {...register('current_stock', { valueAsNumber: true })}
-                  error={errors.current_stock?.message}
-                />
+                <div className="w-full">
+                  <Input
+                    label="Estoque Atual"
+                    type="number"
+                    readOnly={batchFields.length > 0}
+                    className={batchFields.length > 0 ? "bg-muted cursor-not-allowed" : ""}
+                    {...register('current_stock', { valueAsNumber: true })}
+                    error={errors.current_stock?.message}
+                  />
+                  {batchFields.length > 0 && (
+                    <p className="text-[10px] text-muted-foreground mt-1">
+                      * Calculado a partir da soma dos lotes
+                    </p>
+                  )}
+                </div>
                 <Input
                   label="Aviso Estoque Mín."
                   type="number"
@@ -256,19 +310,66 @@ export function ProductForm({ initialData, onSubmit, onCancel, loading }: Produc
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-4 p-4 bg-amber-500/5 border border-amber-500/10 rounded-xl">
-                <Input
-                  label="Lote"
-                  placeholder="Ex: L123"
-                  {...register('batch_number')}
-                />
-                <Input
-                  label="Data de Validade"
-                  type="date"
-                  {...register('expiry_date')}
-                />
-                <p className="col-span-2 text-[10px] text-amber-600 font-medium">
-                  * Estes campos ajudam a controlar o que deve ser vendido primeiro (FEFO).
+              <div className="space-y-4 p-4 bg-amber-500/5 border border-amber-500/10 rounded-xl">
+                <div className="flex items-center justify-between">
+                  <div className="flex flex-col">
+                    <span className="text-sm font-bold text-amber-700">Controle de Lotes (FEFO)</span>
+                    <span className="text-[10px] text-muted-foreground">Cadastre múltiplos lotes e validades</span>
+                  </div>
+                  <span className="text-[10px] text-amber-700 uppercase font-bold bg-amber-500/10 px-2 py-0.5 rounded">
+                    {batchFields.length} {batchFields.length === 1 ? 'lote' : 'lotes'}
+                  </span>
+                </div>
+
+                <div className="space-y-3">
+                  {batchFields.map((field, index) => (
+                    <div key={field.id} className="flex gap-2 items-start group animate-in fade-in duration-200 border-b border-amber-500/10 pb-3 last:border-0 last:pb-0">
+                      <div className="grid grid-cols-12 gap-2 flex-1">
+                        <div className="col-span-4">
+                          <Input
+                            placeholder="Lote"
+                            className="h-9 text-sm"
+                            {...register(`batches.${index}.batch_number` as any)}
+                          />
+                        </div>
+                        <div className="col-span-5">
+                          <Input
+                            type="date"
+                            className="h-9 text-sm"
+                            {...register(`batches.${index}.expiry_date` as any)}
+                          />
+                        </div>
+                        <div className="col-span-3 relative">
+                          <Input
+                            type="number"
+                            placeholder="Qtd"
+                            className="h-9 text-sm pr-8"
+                            {...register(`batches.${index}.quantity` as any, { valueAsNumber: true })}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => removeBatch(index)}
+                            className="absolute right-2 top-1/2 -translate-y-1/2 text-destructive hover:text-red-700 p-1"
+                          >
+                            <X size={14} />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="w-full h-9 border-dashed text-xs border-amber-500/30 text-amber-700 hover:bg-amber-500/5 hover:text-amber-800"
+                  onClick={() => appendBatch({ batch_number: '', expiry_date: '', quantity: 1 })}
+                >
+                  + Adicionar Lote
+                </Button>
+                <p className="text-[10px] text-amber-600 leading-tight italic">
+                  * O lote que vencer mais cedo (FEFO) será exibido no catálogo principal.
                 </p>
               </div>
             </div>
@@ -340,20 +441,21 @@ export function ProductForm({ initialData, onSubmit, onCancel, loading }: Produc
 
           <div className="space-y-4 pt-4 border-t border-secondary/50">
             <div className="flex items-center justify-between">
-
               <div className="flex items-center gap-2">
                 <div className="p-1.5 rounded-lg bg-blue-500 text-white">
                   <Search size={14} />
                 </div>
                 <label className="text-sm font-bold">Outros Custos / Mercado</label>
               </div>
-              <span className="text-[10px] text-muted-foreground uppercase font-bold bg-muted px-2 py-0.5 rounded">Máx 5</span>
+              <span className="text-[10px] text-muted-foreground uppercase font-bold bg-muted px-2 py-0.5 rounded">
+                {marketCostFields.length} de 5
+              </span>
             </div>
             
             <div className="space-y-3">
-              {[0, 1, 2, 3, 4].map((index) => (
-                <div key={index} className="flex gap-2 items-center group">
-                  <div className="w-8 h-8 rounded-full bg-secondary/30 flex items-center justify-center text-[10px] font-bold text-muted-foreground group-focus-within:bg-primary/20 group-focus-within:text-primary transition-colors">
+              {marketCostFields.map((field, index) => (
+                <div key={field.id} className="flex gap-2 items-center group animate-in fade-in duration-200">
+                  <div className="w-8 h-8 rounded-full bg-secondary/30 flex items-center justify-center text-[10px] font-bold text-muted-foreground">
                     {index + 1}
                   </div>
                   <div className="grid grid-cols-5 gap-2 flex-1">
@@ -366,19 +468,38 @@ export function ProductForm({ initialData, onSubmit, onCancel, loading }: Produc
                         {...register(`market_costs.${index}.price` as any, { valueAsNumber: true })}
                       />
                     </div>
-                    <div className="col-span-3">
+                    <div className="col-span-3 relative">
                       <Input
                         placeholder="Local / Fornecedor"
-                        className="h-9 text-sm"
+                        className="h-9 text-sm pr-8"
                         {...register(`market_costs.${index}.location` as any)}
                       />
+                      <button
+                        type="button"
+                        onClick={() => removeMarketCost(index)}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-destructive hover:text-red-700 p-1"
+                      >
+                        <X size={14} />
+                      </button>
                     </div>
                   </div>
                 </div>
               ))}
             </div>
+
+            {marketCostFields.length < 5 && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="w-full h-9 border-dashed text-xs"
+                onClick={() => appendMarketCost({ price: undefined, location: '' } as any)}
+              >
+                + Adicionar Local/Preço
+              </Button>
+            )}
             <p className="text-[10px] text-muted-foreground leading-tight italic">
-              * Registre aqui os preços que você encontrou em outros locais para comparar com o seu custo.
+              * Registre aqui os preços de concorrentes ou cotações externas para monitorar seu custo.
             </p>
           </div>
         </div>

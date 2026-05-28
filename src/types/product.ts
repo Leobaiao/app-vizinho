@@ -1,3 +1,5 @@
+import type { ProductBatch } from './inventory_session';
+
 export interface MarketCost {
   price: number;
   location: string;
@@ -24,6 +26,7 @@ export interface Product {
   expiry_date?: string;
   created_at: string;
   updated_at: string;
+  product_batches?: ProductBatch[];
 }
 
 

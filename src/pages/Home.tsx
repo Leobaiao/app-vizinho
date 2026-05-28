@@ -54,6 +54,46 @@ export default function Home() {
    .sort((a, b) => b.value - a.value)
    .slice(0, 5);
 
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const getDaysDiff = (dateStr: string) => {
+    const d = new Date(dateStr);
+    const diffTime = d.getTime() - today.getTime();
+    return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  };
+
+  const expiringBatches = products.reduce((acc: any[], product) => {
+    if (product.product_batches && product.product_batches.length > 0) {
+      product.product_batches.forEach((batch: any) => {
+        const diff = getDaysDiff(batch.expiry_date);
+        if (diff <= 7) {
+          acc.push({
+            productId: product.id,
+            name: product.name,
+            batchNumber: batch.batch_number,
+            expiryDate: batch.expiry_date,
+            quantity: Number(batch.quantity || 0),
+            daysLeft: diff
+          });
+        }
+      });
+    } else if (product.expiry_date) {
+      const diff = getDaysDiff(product.expiry_date);
+      if (diff <= 7) {
+        acc.push({
+          productId: product.id,
+          name: product.name,
+          batchNumber: product.batch_number || 'Único',
+          expiryDate: product.expiry_date,
+          quantity: product.current_stock,
+          daysLeft: diff
+        });
+      }
+    }
+    return acc;
+  }, []).sort((a, b) => a.daysLeft - b.daysLeft);
+
   const generateWhatsAppAlert = () => {
     if (lowStockProducts.length === 0) return;
     let message = "🚨 *Alerta de Ruptura de Estoque* 🚨\n\n";
@@ -62,6 +102,29 @@ export default function Home() {
       message += `Estoque atual: ${p.current_stock} (Mínimo: ${p.min_stock || 0})\n\n`;
     });
     message += "Por favor, providencie a reposição o quanto antes!";
+    
+    const url = `https://wa.me/?text=${encodeURIComponent(message)}`;
+    window.open(url, '_blank');
+  };
+
+  const generateExpiryWhatsAppAlert = () => {
+    if (expiringBatches.length === 0) return;
+    let message = "🚨 *Relatório de Validades - Vizinho Precifica* 🚨\n\n";
+    message += "Os seguintes itens estão vencidos ou próximos do vencimento:\n\n";
+    
+    expiringBatches.forEach(b => {
+      const statusText = b.daysLeft < 0 
+        ? `🔴 VENCIDO (em ${new Date(b.expiryDate).toLocaleDateString('pt-BR')})` 
+        : b.daysLeft === 0 
+        ? `🟠 VENCE HOJE!` 
+        : `🟡 Vence em ${b.daysLeft} ${b.daysLeft === 1 ? 'dia' : 'dias'} (${new Date(b.expiryDate).toLocaleDateString('pt-BR')})`;
+      
+      message += `📦 *${b.name}*\n`;
+      message += `Lote: ${b.batchNumber} | Qtd: ${b.quantity}\n`;
+      message += `${statusText}\n\n`;
+    });
+    
+    message += "Atenção ao controle de gôndola (FEFO)!";
     
     const url = `https://wa.me/?text=${encodeURIComponent(message)}`;
     window.open(url, '_blank');
@@ -283,6 +346,72 @@ export default function Home() {
           </div>
         </Card>
       </div>
+
+      {/* Alertas de Vencimento (FEFO) */}
+      {expiringBatches.length > 0 && (
+        <Card className="p-6 border border-border/50 bg-card/50 backdrop-blur-sm shadow-sm animate-in fade-in duration-500 space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-xl bg-destructive/10 text-destructive shadow-inner">
+                <AlertTriangle size={24} />
+              </div>
+              <div>
+                <h3 className="font-bold text-xl">Lotes Próximos do Vencimento</h3>
+                <p className="text-sm text-muted-foreground">Atenção ao controle de validade nas gôndolas (FEFO)</p>
+              </div>
+            </div>
+            <button 
+              onClick={generateExpiryWhatsAppAlert}
+              className="flex items-center gap-2 bg-[#25D366]/10 text-[#25D366] hover:bg-[#25D366]/20 px-4 py-2.5 rounded-xl font-bold transition-colors border border-[#25D366]/20 text-sm w-full sm:w-auto justify-center"
+            >
+              <MessageCircleWarning size={16} />
+              <span>Notificar Vencimentos</span>
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 max-h-[300px] overflow-y-auto pr-2 scrollbar-thin">
+            {expiringBatches.map((batch, index) => {
+              let alertColor = "border-destructive bg-destructive/5 text-destructive";
+              let badgeColor = "bg-destructive text-white";
+              let daysText = "";
+
+              if (batch.daysLeft < 0) {
+                daysText = `Vencido há ${Math.abs(batch.daysLeft)} ${Math.abs(batch.daysLeft) === 1 ? 'dia' : 'dias'}`;
+              } else if (batch.daysLeft === 0) {
+                daysText = "Vence hoje!";
+                alertColor = "border-destructive bg-destructive/5 text-destructive animate-pulse";
+                badgeColor = "bg-destructive text-white";
+              } else if (batch.daysLeft <= 3) {
+                daysText = `Vence em ${batch.daysLeft} ${batch.daysLeft === 1 ? 'dia' : 'dias'}`;
+                alertColor = "border-amber-500/30 bg-amber-500/5 text-amber-800 dark:text-amber-300";
+                badgeColor = "bg-amber-500 text-white";
+              } else {
+                daysText = `Vence em ${batch.daysLeft} dias`;
+                alertColor = "border-yellow-500/30 bg-yellow-500/5 text-yellow-800 dark:text-yellow-300";
+                badgeColor = "bg-yellow-500 text-black";
+              }
+
+              return (
+                <div key={index} className={`p-4 rounded-xl border flex flex-col justify-between gap-3 ${alertColor}`}>
+                  <div className="flex justify-between items-start gap-2">
+                    <div className="min-w-0">
+                      <p className="font-bold text-sm truncate">{batch.name}</p>
+                      <p className="text-xs opacity-80">Lote: {batch.batchNumber} • Qtd: {batch.quantity}</p>
+                    </div>
+                    <span className={`text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded ${badgeColor} shrink-0`}>
+                      {daysText}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center text-[10px] opacity-80 pt-2 border-t border-current/15">
+                    <span>Vencimento:</span>
+                    <span className="font-bold">{new Date(batch.expiryDate).toLocaleDateString('pt-BR')}</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </Card>
+      )}
 
       {/* Seção de Atalhos Rápidos com Gradientes */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 pt-4">
