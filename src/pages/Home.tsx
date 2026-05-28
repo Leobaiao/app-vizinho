@@ -94,7 +94,37 @@ export default function Home() {
     return acc;
   }, []).sort((a, b) => a.daysLeft - b.daysLeft);
 
-  const generateWhatsAppAlert = () => {
+  const sendWuzapiMessage = async (message: string) => {
+    const wuzapiUrl = import.meta.env.VITE_WUZAPI_URL;
+    const wuzapiToken = import.meta.env.VITE_WUZAPI_TOKEN;
+    const alertPhone = import.meta.env.VITE_ALERT_PHONE;
+
+    if (!wuzapiUrl || !wuzapiToken || !alertPhone) {
+      return false; // Não configurado
+    }
+
+    try {
+      const baseUrl = wuzapiUrl.replace(/\/$/, "");
+      const response = await fetch(`${baseUrl}/chat/send/text`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Token": wuzapiToken,
+        },
+        body: JSON.stringify({
+          Phone: alertPhone,
+          Body: message,
+        }),
+      });
+
+      return response.ok;
+    } catch (e) {
+      console.error("Erro ao enviar mensagem via Wuzapi:", e);
+      return false;
+    }
+  };
+
+  const generateWhatsAppAlert = async () => {
     if (lowStockProducts.length === 0) return;
     let message = "🚨 *Alerta de Ruptura de Estoque* 🚨\n\n";
     lowStockProducts.forEach(p => {
@@ -103,11 +133,16 @@ export default function Home() {
     });
     message += "Por favor, providencie a reposição o quanto antes!";
     
-    const url = `https://wa.me/?text=${encodeURIComponent(message)}`;
-    window.open(url, '_blank');
+    const sent = await sendWuzapiMessage(message);
+    if (!sent) {
+      const url = `https://wa.me/?text=${encodeURIComponent(message)}`;
+      window.open(url, '_blank');
+    } else {
+      alert("Alerta de estoque enviado com sucesso via Wuzapi!");
+    }
   };
 
-  const generateExpiryWhatsAppAlert = () => {
+  const generateExpiryWhatsAppAlert = async () => {
     if (expiringBatches.length === 0) return;
     let message = "🚨 *Relatório de Validades - Vizinho Precifica* 🚨\n\n";
     message += "Os seguintes itens estão vencidos ou próximos do vencimento:\n\n";
@@ -126,8 +161,13 @@ export default function Home() {
     
     message += "Atenção ao controle de gôndola (FEFO)!";
     
-    const url = `https://wa.me/?text=${encodeURIComponent(message)}`;
-    window.open(url, '_blank');
+    const sent = await sendWuzapiMessage(message);
+    if (!sent) {
+      const url = `https://wa.me/?text=${encodeURIComponent(message)}`;
+      window.open(url, '_blank');
+    } else {
+      alert("Relatório de validades enviado com sucesso via Wuzapi!");
+    }
   };
 
   if (productsLoading || countsLoading) {
