@@ -60,6 +60,20 @@ const getExpiryAlertDetails = (product: any) => {
   };
 };
 
+const sanitizeImageUrl = (url?: string) => {
+  if (!url) return undefined;
+  const cleanUrl = url.trim();
+  if (
+    cleanUrl.startsWith('http://') ||
+    cleanUrl.startsWith('https://') ||
+    cleanUrl.startsWith('/') ||
+    cleanUrl.startsWith('data:image/')
+  ) {
+    return cleanUrl;
+  }
+  return undefined;
+};
+
 export default function Products() {
   const { products, loading, addProduct, updateProduct, deleteProduct } = useProducts();
   const [searchTerm, setSearchTerm] = useState('');
@@ -206,8 +220,8 @@ export default function Products() {
               <Card key={product.id} className={cardStyle}>
                 <div className="p-4 flex gap-4">
                   <div className="h-20 w-20 rounded-lg bg-muted flex items-center justify-center overflow-hidden flex-shrink-0">
-                    {product.image_url ? (
-                      <img src={product.image_url} alt={product.name} className="h-full w-full object-cover" />
+                    {sanitizeImageUrl(product.image_url) ? (
+                      <img src={sanitizeImageUrl(product.image_url)} alt={product.name} className="h-full w-full object-cover" />
                     ) : (
                       <Package className="text-muted-foreground" />
                     )}
