@@ -6,7 +6,7 @@ import { Card } from '../components/ui/Card';
 import { ProductForm } from '../components/ProductForm';
 import { BarcodeScanner } from '../components/BarcodeScanner';
 import { Modal } from '../components/ui/Modal';
-import { Plus, Search, Package, Edit2, Trash2, Barcode } from 'lucide-react';
+import { Plus, Search, Package, Edit2, Trash2, Barcode, AlertTriangle } from 'lucide-react';
 import type { ProductInsert } from '../types/product';
 
 const getExpiryAlertDetails = (product: any) => {
@@ -25,16 +25,23 @@ const getExpiryAlertDetails = (product: any) => {
 
   let colorClass = "";
   let text = "";
+  let isCritical = false;
+  let isExpired = false;
 
   if (diffDays < 0) {
     colorClass = "bg-destructive/10 text-destructive border-destructive/20";
     text = `Vencido há ${Math.abs(diffDays)} ${Math.abs(diffDays) === 1 ? 'dia' : 'dias'}`;
+    isExpired = true;
+    isCritical = true;
   } else if (diffDays === 0) {
     colorClass = "bg-destructive/10 text-destructive border-destructive/20 animate-pulse";
     text = "Vence hoje!";
+    isExpired = true;
+    isCritical = true;
   } else if (diffDays <= 7) {
     colorClass = "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20";
     text = `Vence em ${diffDays} ${diffDays === 1 ? 'dia' : 'dias'}`;
+    isCritical = true;
   } else if (diffDays <= 30) {
     colorClass = "bg-yellow-500/10 text-yellow-700 dark:text-yellow-400 border-yellow-500/20";
     text = `Vence em ${diffDays} dias`;
@@ -47,6 +54,8 @@ const getExpiryAlertDetails = (product: any) => {
     text,
     colorClass,
     batchNumber,
+    isCritical,
+    isExpired,
     expiryDate: expiryDate.toLocaleDateString('pt-BR')
   };
 };
@@ -186,8 +195,15 @@ export default function Products() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filteredProducts.map((product) => {
             const expiryAlert = getExpiryAlertDetails(product);
+            let cardStyle = "group hover:border-primary/50 transition-all duration-300 relative overflow-hidden";
+            if (expiryAlert?.isExpired) {
+              cardStyle = "group border-destructive/50 bg-destructive/5 shadow-sm shadow-destructive/5 hover:border-destructive transition-all duration-300 relative overflow-hidden";
+            } else if (expiryAlert?.isCritical) {
+              cardStyle = "group border-amber-500/50 bg-amber-500/5 shadow-sm shadow-amber-500/5 hover:border-amber-500 transition-all duration-300 relative overflow-hidden";
+            }
+            
             return (
-              <Card key={product.id} className="group hover:border-primary/50 transition-colors">
+              <Card key={product.id} className={cardStyle}>
                 <div className="p-4 flex gap-4">
                   <div className="h-20 w-20 rounded-lg bg-muted flex items-center justify-center overflow-hidden flex-shrink-0">
                     {product.image_url ? (
@@ -198,15 +214,58 @@ export default function Products() {
                   </div>
                   <div className="flex-1 min-w-0 flex flex-col justify-between">
                     <div>
-                      <h4 className="font-bold text-lg truncate">{product.name}</h4>
+                      <h4 className="font-bold text-lg truncate flex items-center gap-1">
+                        {product.name}
+                        {expiryAlert?.isExpired && (
+                          <span title="Produto vencido!" className="shrink-0 flex">
+                            <AlertTriangle className="text-destructive shrink-0 animate-pulse" size={16} />
+                          </span>
+                        )}
+                        {!expiryAlert?.isExpired && expiryAlert?.isCritical && (
+                          <span title="Validade curta!" className="shrink-0 flex">
+                            <AlertTriangle className="text-amber-500 shrink-0" size={16} />
+                          </span>
+                        )}
+                      </h4>
                       <p className="text-sm text-muted-foreground truncate">{product.category || 'Sem categoria'}</p>
-                      <div className="mt-1 flex items-baseline gap-2">
-                        <span className="text-xl font-bold text-primary">
-                          R$ {product.selling_price?.toFixed(2) || '0,00'}
-                        </span>
-                        <span className="text-xs text-muted-foreground">
-                          Custo: R$ {product.cost_price.toFixed(2)}
-                        </span>
+                      <div className="mt-1 flex flex-col gap-1">
+                        <div className="flex items-baseline gap-2">
+                          <span className="text-xl font-bold text-primary">
+                            R$ {product.selling_price?.toFixed(2) || '0,00'}
+                          </span>
+                          <span className="text-xs text-muted-foreground">
+                            Custo: R$ {product.cost_price.toFixed(2)}
+                          </span>
+                        </div>
+                        {product.market_price && product.market_price > 0 && (
+                          <div className="flex items-center gap-1.5 mt-0.5">
+                            <span className="text-[11px] text-muted-foreground">
+                              Mercado: R$ {product.market_price.toFixed(2)}
+                            </span>
+                            {product.selling_price && (() => {
+                              const diff = product.selling_price - product.market_price;
+                              if (diff < 0) {
+                                return (
+                                  <span className="text-[9px] font-bold px-1.5 py-0.2 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 rounded-md border border-emerald-500/10 shrink-0">
+                                    -{Math.abs(diff / product.market_price * 100).toFixed(0)}% vs Mercado
+                                  </span>
+                                );
+                              } else if (diff > 0) {
+                                return (
+                                  <span className="text-[9px] font-bold px-1.5 py-0.2 bg-destructive/10 text-destructive rounded-md border border-destructive/10 shrink-0">
+                                    +{Math.abs(diff / product.market_price * 100).toFixed(0)}% vs Mercado
+                                  </span>
+                                );
+                              } else {
+                                return (
+                                  <span className="text-[9px] font-bold px-1.5 py-0.2 bg-muted text-muted-foreground rounded-md border shrink-0">
+                                    Igual
+                                  </span>
+                                );
+                              }
+                            })()}
+                          </div>
+                        )}
                       </div>
                     </div>
                     {expiryAlert && (

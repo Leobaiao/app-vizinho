@@ -8,11 +8,40 @@ import { Input } from '../components/ui/Input';
 import { FileUp, FileText, CheckCircle2, AlertCircle, ArrowRight, Plus, Sparkles, X } from 'lucide-react';
 import { calculateSellingPrice } from '../utils/pricing';
 
+const getXmlItemExpiryWarning = (expiryDateStr?: string) => {
+  if (!expiryDateStr) return null;
+  const expiryDate = new Date(expiryDateStr);
+  if (isNaN(expiryDate.getTime())) return null;
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const diffTime = expiryDate.getTime() - today.getTime();
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+  if (diffDays < 0) {
+    return { text: `Vencido há ${Math.abs(diffDays)}d`, color: 'text-destructive bg-destructive/10 border-destructive/15' };
+  } else if (diffDays === 0) {
+    return { text: 'Vence HOJE!', color: 'text-destructive bg-destructive/10 border-destructive/15 animate-pulse' };
+  } else if (diffDays <= 7) {
+    return { text: `Vence em ${diffDays}d`, color: 'text-amber-700 dark:text-amber-400 bg-amber-500/10 border-amber-500/15' };
+  } else if (diffDays <= 30) {
+    return { text: `Validade Curta (${diffDays}d)`, color: 'text-yellow-750 dark:text-yellow-450 bg-yellow-500/10 border-yellow-500/15' };
+  } else {
+    return { text: `Validade OK (${diffDays}d)`, color: 'text-emerald-700 dark:text-emerald-400 bg-emerald-500/10 border-emerald-500/15' };
+  }
+};
+
 export default function History() {
   const { products, updateProduct, addProduct } = useProducts();
   const [items, setItems] = useState<NFeItem[]>([]);
   const [importing, setImporting] = useState(false);
   const [step, setStep] = useState<'upload' | 'review'>('upload');
+
+  const hasMatchedMissingExpiry = items.some(item => {
+    const matched = products.find(p => String(p.barcode || '').trim().replace(/^0+/, '') === String(item.barcode || '').trim().replace(/^0+/, '') && item.barcode !== "");
+    return matched && !item.expiry;
+  });
 
   const [modal, setModal] = useState<{
     isOpen: boolean;
@@ -100,8 +129,8 @@ export default function History() {
         const sortedBatches = [...updatedBatches].sort(
           (a, b) => new Date(a.expiry_date).getTime() - new Date(b.expiry_date).getTime()
         );
-        const mainBatchNumber = sortedBatches[0]?.batch_number || null;
-        const mainExpiryDate = sortedBatches[0]?.expiry_date || null;
+        const mainBatchNumber = sortedBatches[0]?.batch_number || undefined;
+        const mainExpiryDate = sortedBatches[0]?.expiry_date || undefined;
         const totalStock = updatedBatches.reduce((acc, b) => acc + Number(b.quantity || 0), 0);
 
         // Atualiza estoque somando o que chegou na nota e insere novo lote
@@ -268,6 +297,15 @@ export default function History() {
                             }}
                           />
                         </div>
+                        {item.expiry && (() => {
+                          const warning = getXmlItemExpiryWarning(item.expiry);
+                          return warning ? (
+                            <div className="col-span-2 flex items-center gap-1.5 mt-2 p-1.5 rounded border text-[10px] font-bold justify-center uppercase tracking-wider bg-card text-foreground">
+                              <span>Status:</span>
+                              <span className={`px-2 py-0.5 rounded border ${warning.color}`}>{warning.text}</span>
+                            </div>
+                          ) : null;
+                        })()}
                       </div>
                     )}
                   </div>
@@ -279,9 +317,21 @@ export default function History() {
           <div className="p-6 bg-card border rounded-2xl shadow-lg flex flex-col sm:flex-row items-center justify-between gap-4 sticky bottom-20">
             <div className="text-center sm:text-left">
               <p className="text-sm font-medium text-muted-foreground">Ação Recomendada</p>
-              <p className="font-bold">Atualizar estoque e preços dos itens vinculados</p>
+              {hasMatchedMissingExpiry ? (
+                <p className="font-bold text-destructive flex items-center gap-1.5 justify-center sm:justify-start">
+                  <AlertCircle size={16} /> Preencha as validades dos itens vinculados
+                </p>
+              ) : (
+                <p className="font-bold">Atualizar estoque e preços dos itens vinculados</p>
+              )}
             </div>
-            <Button size="lg" className="w-full sm:w-auto px-12" onClick={handleImport} isLoading={importing}>
+            <Button 
+              size="lg" 
+              className="w-full sm:w-auto px-12" 
+              onClick={handleImport} 
+              isLoading={importing}
+              disabled={hasMatchedMissingExpiry}
+            >
               Confirmar Importação <ArrowRight className="ml-2 h-4 w-4" />
             </Button>
           </div>
@@ -379,7 +429,16 @@ export default function History() {
                       onChange={(e) => setQuickRegItem({ ...quickRegItem, expiry: e.target.value })}
                     />
                   </div>
-                  <p className="col-span-3 text-[9px] text-amber-600 font-medium">
+                  {quickRegItem.expiry && (() => {
+                    const warning = getXmlItemExpiryWarning(quickRegItem.expiry);
+                    return warning ? (
+                      <div className="col-span-3 flex justify-between items-center text-[10px] mt-1 font-bold px-1">
+                        <span className="text-amber-800">Status do lote:</span>
+                        <span className={`px-2 py-0.5 rounded border uppercase tracking-wider text-[9px] ${warning.color}`}>{warning.text}</span>
+                      </div>
+                    ) : null;
+                  })()}
+                  <p className="col-span-3 text-[9px] text-amber-600 font-medium border-t border-amber-500/10 pt-2 mt-1">
                     * Qtd. Lote pré-preenchida com {quickRegItem.quantity} un.
                   </p>
                 </div>

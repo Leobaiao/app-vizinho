@@ -5,7 +5,6 @@ import {
   TrendingUp, 
   Package, 
   AlertTriangle, 
-  DollarSign, 
   ArrowUpRight,
   ChevronRight,
   Plus,
@@ -207,6 +206,9 @@ export default function Home() {
     );
   }
 
+  const expiredCount = expiringBatches.filter(b => b.daysLeft < 0).length;
+  const expiringSoonCount = expiringBatches.filter(b => b.daysLeft >= 0 && b.daysLeft <= 7).length;
+
   const kpis = [
     {
       label: 'Patrimônio em Estoque',
@@ -230,11 +232,15 @@ export default function Home() {
       trend: 'Estoque mínimo atingido'
     },
     {
-      label: 'Vendas (Em Breve)',
-      value: 'R$ 0,00',
-      icon: <DollarSign className="text-purple-600 dark:text-purple-400" />,
-      color: 'bg-purple-500/10',
-      trend: 'Módulo de PDV futuro'
+      label: 'Validades Críticas',
+      value: expiringBatches.length.toString(),
+      icon: <AlertTriangle className={expiringBatches.length > 0 ? "text-destructive animate-pulse" : "text-emerald-600 dark:text-emerald-400"} />,
+      color: expiringBatches.length > 0 ? 'bg-destructive/10' : 'bg-emerald-500/10',
+      trend: expiredCount > 0 
+        ? `${expiredCount} vencido${expiredCount > 1 ? 's' : ''}!` 
+        : expiringSoonCount > 0 
+        ? `${expiringSoonCount} a vencer` 
+        : 'Tudo dentro da validade'
     }
   ];
 

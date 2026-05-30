@@ -15,8 +15,31 @@ import {
   Flag, 
   Download, 
   Settings2,
-  ArrowLeft
+  ArrowLeft,
+  AlertTriangle
 } from 'lucide-react';
+
+const getInventoryExpiryBadge = (product: any) => {
+  const expiryDateStr = product?.expiry_date;
+  if (!expiryDateStr) return null;
+
+  const expiryDate = new Date(expiryDateStr);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const diffTime = expiryDate.getTime() - today.getTime();
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+  if (diffDays < 0) {
+    return { text: `Vencido (${expiryDate.toLocaleDateString('pt-BR')})`, color: 'text-destructive bg-destructive/10 border-destructive/10' };
+  } else if (diffDays === 0) {
+    return { text: 'Vence HOJE!', color: 'text-destructive bg-destructive/10 border-destructive/10 animate-pulse' };
+  } else if (diffDays <= 7) {
+    return { text: `Vence em ${diffDays}d`, color: 'text-amber-600 bg-amber-500/10 border-amber-500/10' };
+  } else {
+    return null;
+  }
+};
 import type { InventorySessionItem } from '../types/inventory_session';
 
 export default function Inventory() {
@@ -348,18 +371,31 @@ export default function Inventory() {
             <div className="grid gap-3">
               {currentItems.slice(0, 3).map((item: any) => {
                 const product = products.find(p => p.id === item.product_id);
+                const expiryBadge = getInventoryExpiryBadge(product);
                 return (
-                  <Card key={item.id} className="p-3 flex items-center justify-between bg-muted/20">
+                  <Card key={item.id} className={`p-3 flex items-center justify-between bg-muted/20 relative overflow-hidden ${expiryBadge ? 'border-l-4 border-l-destructive/50' : ''}`}>
                     <div className="flex items-center gap-3">
-                      <div className="h-8 w-8 rounded-lg bg-white flex items-center justify-center">
+                      <div className="h-8 w-8 rounded-lg bg-white flex items-center justify-center shrink-0">
                         <Barcode size={16} className="text-muted-foreground" />
                       </div>
-                      <div>
-                        <p className="text-sm font-bold truncate max-w-[150px]">{product?.name}</p>
-                        <p className="text-[10px] text-muted-foreground">Sistema: {item.expected_quantity}</p>
+                      <div className="min-w-0">
+                        <p className="text-sm font-bold truncate max-w-[140px] flex items-center gap-1">
+                          {product?.name}
+                          {expiryBadge && (
+                            <AlertTriangle className="text-destructive shrink-0 animate-pulse" size={14} />
+                          )}
+                        </p>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <span className="text-[10px] text-muted-foreground">Sistema: {item.expected_quantity}</span>
+                          {expiryBadge && (
+                            <span className={`text-[8px] font-bold px-1.5 py-0.2 rounded border uppercase tracking-wider shrink-0 ${expiryBadge.color}`}>
+                              {expiryBadge.text}
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </div>
-                    <div className="text-right">
+                    <div className="text-right shrink-0">
                       <p className="font-black text-primary">{item.counted_quantity}</p>
                       <p className="text-[10px] text-muted-foreground uppercase font-bold">Lido</p>
                     </div>
@@ -399,6 +435,10 @@ function SessionDetails({ session, products, onClose, onAdjust, onExport, getIte
   };
 
   const discrepancies = items.filter(i => i.counted_quantity !== i.expected_quantity);
+  const isAlreadyAdjusted = items.length > 0 && items.every(item => {
+    const product = products.find((p: any) => p.id === item.product_id);
+    return product ? Number(product.current_stock) === Number(item.counted_quantity) : true;
+  });
 
   if (loading) return <div className="p-10 text-center">Carregando relatório...</div>;
 
@@ -437,15 +477,28 @@ function SessionDetails({ session, products, onClose, onAdjust, onExport, getIte
           {items.map((item) => {
             const product = products.find((p: any) => p.id === item.product_id);
             const diff = item.counted_quantity - item.expected_quantity;
+            const expiryBadge = getInventoryExpiryBadge(product);
             
             return (
-              <Card key={item.id} className={`p-4 ${diff !== 0 ? 'border-l-4 border-amber-500' : ''}`}>
+              <Card key={item.id} className={`p-4 ${diff !== 0 ? 'border-l-4 border-amber-500' : expiryBadge ? 'border-l-4 border-destructive/50' : ''}`}>
                 <div className="flex items-center justify-between">
                   <div className="flex-1 min-w-0">
-                    <p className="font-bold truncate">{product?.name}</p>
-                    <p className="text-xs text-muted-foreground">Sistema: {item.expected_quantity} | Contado: {item.counted_quantity}</p>
+                    <p className="font-bold truncate flex items-center gap-1">
+                      {product?.name}
+                      {expiryBadge && (
+                        <AlertTriangle className="text-destructive shrink-0 animate-pulse" size={14} />
+                      )}
+                    </p>
+                    <div className="flex items-center gap-3 mt-1 flex-wrap">
+                      <span className="text-xs text-muted-foreground">Sistema: {item.expected_quantity} | Contado: {item.counted_quantity}</span>
+                      {expiryBadge && (
+                        <span className={`text-[9px] font-bold px-2 py-0.5 rounded border uppercase tracking-wider shrink-0 ${expiryBadge.color}`}>
+                          {expiryBadge.text}
+                        </span>
+                      )}
+                    </div>
                   </div>
-                  <div className="text-right ml-4">
+                  <div className="text-right ml-4 shrink-0">
                     <p className={`text-lg font-black ${diff > 0 ? 'text-emerald-600' : diff < 0 ? 'text-destructive' : 'text-muted-foreground'}`}>
                       {diff > 0 ? `+${diff}` : diff}
                     </p>
@@ -460,9 +513,15 @@ function SessionDetails({ session, products, onClose, onAdjust, onExport, getIte
 
       <div className="fixed bottom-24 left-6 right-6 flex gap-3 z-10">
         <Button variant="outline" className="flex-1 h-12 bg-background/80 backdrop-blur-sm" onClick={onClose}>Fechar</Button>
-        <Button className="flex-[2] h-12 bg-amber-600 hover:bg-amber-700 shadow-lg" onClick={onAdjust}>
-          <Settings2 className="mr-2 h-4 w-4" /> Ajustar Estoque
-        </Button>
+        {isAlreadyAdjusted ? (
+          <Button className="flex-[2] h-12 bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg cursor-default" disabled>
+            <CheckCircle2 className="mr-2 h-4 w-4" /> Estoque Ajustado
+          </Button>
+        ) : (
+          <Button className="flex-[2] h-12 bg-amber-600 hover:bg-amber-700 shadow-lg" onClick={onAdjust}>
+            <Settings2 className="mr-2 h-4 w-4" /> Ajustar Estoque
+          </Button>
+        )}
       </div>
     </div>
   );

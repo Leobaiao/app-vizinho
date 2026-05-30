@@ -29,7 +29,10 @@ export function parseNFeXML(xmlString: string): NFeItem[] {
       // Tentar capturar informações de lote/validade (tag rastro)
       const rastro = itemsNodes[i].getElementsByTagName("rastro")[0];
       const batch = rastro?.getElementsByTagName("nLote")[0]?.textContent || undefined;
-      const expiry = rastro?.getElementsByTagName("dVal")[0]?.textContent || undefined;
+      let expiry = rastro?.getElementsByTagName("dVal")[0]?.textContent || undefined;
+      if (expiry && expiry.includes("T")) {
+        expiry = expiry.split("T")[0];
+      }
 
       // Só adicionamos se tiver um nome válido
       if (name) {

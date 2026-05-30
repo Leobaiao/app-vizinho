@@ -69,7 +69,18 @@ export function ProductForm({ initialData, onSubmit, onCancel, loading }: Produc
       payment_fees: initialData?.payment_fees || 0,
       fixed_costs: initialData?.fixed_costs || 0,
       market_price: initialData?.market_price || 0,
-      market_costs: (initialData as any)?.market_costs || [],
+      market_costs: (() => {
+        const initialCosts = (initialData as any)?.market_costs && (initialData as any)?.market_costs.length > 0
+          ? (initialData as any).market_costs
+          : (initialData as any)?.market_price
+          ? [{ price: (initialData as any).market_price, location: 'Mercado Principal (Referência)' }]
+          : [];
+        const standardized = [...initialCosts];
+        while (standardized.length < 5) {
+          standardized.push({ price: undefined, location: '' });
+        }
+        return standardized.slice(0, 5);
+      })(),
       current_stock: (initialData as any)?.current_stock || 0,
       min_stock: (initialData as any)?.min_stock || 0,
       batch_number: (initialData as any)?.batch_number || '',
@@ -78,10 +89,7 @@ export function ProductForm({ initialData, onSubmit, onCancel, loading }: Produc
     },
   });
 
-  const { fields: marketCostFields, append: appendMarketCost, remove: removeMarketCost } = useFieldArray({
-    control,
-    name: 'market_costs'
-  });
+
 
   const { fields: batchFields, append: appendBatch, remove: removeBatch } = useFieldArray({
     control,
@@ -89,6 +97,38 @@ export function ProductForm({ initialData, onSubmit, onCancel, loading }: Produc
   });
 
   const watchedBatches = useWatch({ control, name: 'batches' });
+  const watchedMarketCosts = useWatch({ control, name: 'market_costs' }) || [];
+
+  const competitorPrices = watchedMarketCosts
+    .map((c: any) => Number(c?.price))
+    .filter((price: number) => !isNaN(price) && price > 0);
+  const averageMarketPrice = competitorPrices.length > 0
+    ? competitorPrices.reduce((acc: number, val: number) => acc + val, 0) / competitorPrices.length
+    : 0;
+
+  const getBatchExpiryWarning = (expiryDateStr?: string) => {
+    if (!expiryDateStr) return null;
+    const expiryDate = new Date(expiryDateStr);
+    if (isNaN(expiryDate.getTime())) return null;
+    
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    const diffTime = expiryDate.getTime() - today.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    
+    if (diffDays < 0) {
+      return { text: '⚠️ Vencido!', color: 'text-destructive font-bold' };
+    } else if (diffDays === 0) {
+      return { text: '🚨 Vence HOJE!', color: 'text-destructive font-bold animate-pulse' };
+    } else if (diffDays <= 7) {
+      return { text: `⚠️ Vence em ${diffDays}d`, color: 'text-amber-500 font-bold' };
+    } else if (diffDays <= 30) {
+      return { text: `📅 Validade Curta (${diffDays}d)`, color: 'text-yellow-600 dark:text-yellow-400 font-medium' };
+    } else {
+      return { text: `✅ OK (${diffDays}d)`, color: 'text-emerald-600 dark:text-emerald-400 font-medium' };
+    }
+  };
 
   useEffect(() => {
     if (watchedBatches && watchedBatches.length > 0) {
@@ -198,7 +238,7 @@ export function ProductForm({ initialData, onSubmit, onCancel, loading }: Produc
             category: data.category === '' ? null : data.category,
             expiry_date: mainExpiryDate,
             batch_number: mainBatchNumber,
-            market_price: isNaN(data.market_price as any) ? null : data.market_price,
+            market_price: cleanedMarketCosts[0] ? Number(cleanedMarketCosts[0].price) : null,
             min_stock: isNaN(data.min_stock as any) ? 0 : data.min_stock,
             market_costs: cleanedMarketCosts,
             selling_price: calculatedPrice,
@@ -323,8 +363,8 @@ export function ProductForm({ initialData, onSubmit, onCancel, loading }: Produc
 
                 <div className="space-y-3">
                   {batchFields.map((field, index) => (
-                    <div key={field.id} className="flex gap-2 items-start group animate-in fade-in duration-200 border-b border-amber-500/10 pb-3 last:border-0 last:pb-0">
-                      <div className="grid grid-cols-12 gap-2 flex-1">
+                    <div key={field.id} className="flex flex-col gap-1.5 p-3 bg-amber-500/5 border border-amber-500/10 rounded-xl animate-in fade-in duration-200">
+                      <div className="grid grid-cols-12 gap-2 items-center">
                         <div className="col-span-4">
                           <Input
                             placeholder="Lote"
@@ -355,6 +395,16 @@ export function ProductForm({ initialData, onSubmit, onCancel, loading }: Produc
                           </button>
                         </div>
                       </div>
+                      {/* Alerta de validade em tempo real */}
+                      {watchedBatches?.[index]?.expiry_date && (() => {
+                        const warning = getBatchExpiryWarning(watchedBatches[index]?.expiry_date);
+                        return warning ? (
+                          <div className="flex justify-between items-center text-[10px] mt-0.5 px-1 font-bold">
+                            <span className="text-muted-foreground">Status do lote:</span>
+                            <span className={warning.color}>{warning.text}</span>
+                          </div>
+                        ) : null;
+                      })()}
                     </div>
                   ))}
                 </div>
@@ -431,75 +481,60 @@ export function ProductForm({ initialData, onSubmit, onCancel, loading }: Produc
             </div>
           </div>
 
-          <Input
-            label="Preço Praticado pelo Mercado (R$)"
-            type="number"
-            step="0.01"
-            placeholder="Opcional"
-            {...register('market_price', { valueAsNumber: true })}
-          />
-
           <div className="space-y-4 pt-4 border-t border-secondary/50">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <div className="p-1.5 rounded-lg bg-blue-500 text-white">
                   <Search size={14} />
                 </div>
-                <label className="text-sm font-bold">Outros Custos / Mercado</label>
+                <label className="text-sm font-bold">Preços de Mercado (Concorrentes)</label>
               </div>
               <span className="text-[10px] text-muted-foreground uppercase font-bold bg-muted px-2 py-0.5 rounded">
-                {marketCostFields.length} de 5
+                5 slots
               </span>
             </div>
-            
+
+            {averageMarketPrice > 0 && (
+              <div className="flex justify-between items-center text-xs font-bold text-muted-foreground bg-blue-500/5 border border-blue-500/10 p-2.5 rounded-xl">
+                <span>Média do Mercado ({competitorPrices.length} cotações):</span>
+                <span className="text-blue-600 dark:text-blue-400">R$ {averageMarketPrice.toFixed(2)}</span>
+              </div>
+            )}
+
             <div className="space-y-3">
-              {marketCostFields.map((field, index) => (
-                <div key={field.id} className="flex gap-2 items-center group animate-in fade-in duration-200">
-                  <div className="w-8 h-8 rounded-full bg-secondary/30 flex items-center justify-center text-[10px] font-bold text-muted-foreground">
-                    {index + 1}
-                  </div>
-                  <div className="grid grid-cols-5 gap-2 flex-1">
-                    <div className="col-span-2">
-                      <Input
-                        placeholder="Preço R$"
-                        type="number"
-                        step="0.01"
-                        className="h-9 text-sm"
-                        {...register(`market_costs.${index}.price` as any, { valueAsNumber: true })}
-                      />
-                    </div>
-                    <div className="col-span-3 relative">
-                      <Input
-                        placeholder="Local / Fornecedor"
-                        className="h-9 text-sm pr-8"
-                        {...register(`market_costs.${index}.location` as any)}
-                      />
-                      <button
-                        type="button"
-                        onClick={() => removeMarketCost(index)}
-                        className="absolute right-2 top-1/2 -translate-y-1/2 text-destructive hover:text-red-700 p-1"
-                      >
-                        <X size={14} />
-                      </button>
+              {[0, 1, 2, 3, 4].map((index) => {
+                const label = index === 0 ? "★ Preço Principal (Referência)" : `Concorrente #${index + 1}`;
+                const labelColor = index === 0 ? "text-amber-500 font-bold" : "text-muted-foreground";
+                return (
+                  <div key={index} className="flex flex-col gap-1.5 p-3 bg-card border border-border/80 rounded-xl animate-in fade-in duration-200">
+                    <span className={`text-[10px] font-black uppercase tracking-wider ${labelColor}`}>
+                      {label}
+                    </span>
+                    <div className="grid grid-cols-12 gap-2">
+                      <div className="col-span-5">
+                        <Input
+                          placeholder="Preço R$"
+                          type="number"
+                          step="0.01"
+                          className="h-9 text-sm"
+                          {...register(`market_costs.${index}.price` as any, { valueAsNumber: true })}
+                        />
+                      </div>
+                      <div className="col-span-7">
+                        <Input
+                          placeholder="Ex: Supermercado Vizinho"
+                          className="h-9 text-sm"
+                          {...register(`market_costs.${index}.location` as any)}
+                        />
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
 
-            {marketCostFields.length < 5 && (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="w-full h-9 border-dashed text-xs"
-                onClick={() => appendMarketCost({ price: undefined, location: '' } as any)}
-              >
-                + Adicionar Local/Preço
-              </Button>
-            )}
             <p className="text-[10px] text-muted-foreground leading-tight italic">
-              * Registre aqui os preços de concorrentes ou cotações externas para monitorar seu custo.
+              * O preço principal (Referência) será usado no catálogo. Os outros 4 slots são opcionais.
             </p>
           </div>
         </div>
