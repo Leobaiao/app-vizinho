@@ -61,6 +61,10 @@ const getExpiryAlertDetails = (product: any) => {
   };
 };
 
+const sanitizeText = (str: string) => {
+  return str.replace(/<[^>]*>/g, '');
+};
+
 const sanitizeImageUrl = (url?: string) => {
   if (!url) return undefined;
   const cleanUrl = url.trim();
@@ -116,7 +120,7 @@ export default function Products() {
       isOpen: true,
       variant: 'danger',
       title: 'Excluir Produto?',
-      description: `Tem certeza que deseja excluir "${product.name}"? O histórico de inventário relacionado a ele será mantido, mas ele não aparecerá mais no catálogo.`,
+      description: `Tem certeza que deseja excluir "${sanitizeText(product.name)}"? O histórico de inventário relacionado a ele será mantido, mas ele não aparecerá mais no catálogo.`,
       actionLabel: 'Excluir',
       onAction: () => deleteProduct(product.id),
     });
