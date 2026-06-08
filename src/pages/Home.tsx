@@ -1,5 +1,8 @@
+import { useEffect } from 'react';
 import { useProducts } from '../hooks/useProducts';
 import { useInventory } from '../hooks/useInventory';
+import { usePricingConfig } from '../hooks/usePricingConfig';
+import { triggerWebhook, shouldTriggerAutoWebhook } from '../utils/webhookService';
 import { Card } from '../components/ui/Card';
 import { 
   TrendingUp, 
@@ -31,6 +34,15 @@ const COLORS = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'
 export default function Home() {
   const { products, loading: productsLoading } = useProducts();
   const { loading: countsLoading } = useInventory();
+  const { config, loading: configLoading } = usePricingConfig();
+
+  useEffect(() => {
+    if (!productsLoading && !configLoading && products.length > 0 && config) {
+      if (shouldTriggerAutoWebhook(config)) {
+        triggerWebhook(products, config, false);
+      }
+    }
+  }, [products, productsLoading, config, configLoading]);
 
   // Cálculos de Dashboard
   const totalStockValue = products.reduce((acc, p) => acc + (p.cost_price * p.current_stock), 0);

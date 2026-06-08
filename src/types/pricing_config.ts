@@ -19,6 +19,14 @@ export interface PricingConfig {
 
   // Margens por Categoria
   margens_por_categoria: CategoryMargin[];
+
+  // Configurações do Webhook
+  webhook_url?: string;
+  webhook_enabled?: boolean;
+  webhook_days_threshold?: number;
+  webhook_stock_threshold_enabled?: boolean;
+  webhook_stock_threshold?: number;
+  webhook_time?: string;
 }
 
 export interface CustoFixo {

@@ -14,6 +14,14 @@ export const DEFAULT_PRICING_CONFIG: PricingConfig = {
   imposto_pct: 6.0,
   perdas_pct: 2.0,
 
+  // Configurações padrão de webhook
+  webhook_url: 'https://miranda.beontech.com.br/webhook/7e8679cf-33e8-4f43-981e-38034b384cdd',
+  webhook_enabled: false,
+  webhook_days_threshold: 7,
+  webhook_stock_threshold_enabled: false,
+  webhook_stock_threshold: 5,
+  webhook_time: '09:00',
+
   custos_fixos: [
     { nome: 'Energia Elétrica (geladeiras, freezers, luz)', valor: 350 },
     { nome: 'Internet / Telefone', valor: 120 },

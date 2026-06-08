@@ -26,9 +26,12 @@ import {
   Calculator,
   Package,
   X,
-  Plus
+  Plus,
+  Webhook,
+  Send
 } from 'lucide-react';
 import { motion } from 'framer-motion';
+import { triggerWebhook } from '../utils/webhookService';
 
 export default function PricingConfig() {
   const { config, loading, saving, saveConfig, resetToDefaults } = usePricingConfig();
@@ -40,6 +43,7 @@ export default function PricingConfig() {
     taxas: true,
     custos: false,
     margens: true,
+    webhook: false,
   });
   const [importModal, setImportModal] = useState(false);
   const [importing, setImporting] = useState(false);
@@ -47,6 +51,22 @@ export default function PricingConfig() {
   const [hasChanges, setHasChanges] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [resetModal, setResetModal] = useState(false);
+
+  const [testingWebhook, setTestingWebhook] = useState(false);
+  const [webhookTestResult, setWebhookTestResult] = useState<{ success: boolean; message: string } | null>(null);
+
+  const handleTestWebhook = async () => {
+    setTestingWebhook(true);
+    setWebhookTestResult(null);
+    try {
+      const res = await triggerWebhook(products, form, true);
+      setWebhookTestResult({ success: res.success, message: res.message });
+    } catch (err: any) {
+      setWebhookTestResult({ success: false, message: err.message || 'Erro inesperado ao enviar.' });
+    } finally {
+      setTestingWebhook(false);
+    }
+  };
 
   useEffect(() => {
     if (!loading) {
@@ -482,6 +502,124 @@ export default function PricingConfig() {
                 <div className="mt-4 flex items-center gap-2 text-xs text-muted-foreground bg-muted/30 p-3 rounded-xl">
                   <Info size={14} className="shrink-0" />
                   <span>Fator de Markup = 100% - Taxa Cartão - (Imposto + Perdas) - % Custos Fixos - Margem. Valores abaixo de 40% indicam risco.</span>
+                </div>
+              </motion.div>
+            )}
+          </Card>
+
+          {/* ======= SEÇÃO: CONFIGURAÇÃO DE WEBHOOK ======= */}
+          <Card className="border border-border/50 bg-card/50 backdrop-blur-sm shadow-sm overflow-hidden">
+            <button 
+              onClick={() => toggleSection('webhook')}
+              className="w-full p-6 flex items-center justify-between hover:bg-muted/30 transition-colors"
+            >
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-xl bg-purple-500/10 text-purple-600 dark:text-purple-400 shadow-inner">
+                  <Webhook size={22} />
+                </div>
+                <div className="text-left">
+                  <h3 className="font-bold text-lg">Alertas de Webhook</h3>
+                  <p className="text-sm text-muted-foreground">Dispare informações de vencimento e estoque baixo</p>
+                </div>
+              </div>
+              {expandedSections.webhook ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+            </button>
+
+            {expandedSections.webhook && (
+              <motion.div 
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: 'auto', opacity: 1 }}
+                className="px-6 pb-6 space-y-6"
+              >
+                {/* Enabled Toggle */}
+                <div className="flex items-center justify-between p-4 bg-muted/20 rounded-xl border border-border/30">
+                  <div>
+                    <label className="font-bold text-sm block">Habilitar Envio Automático</label>
+                    <span className="text-xs text-muted-foreground">Dispara um relatório diário silencioso ao entrar no aplicativo</span>
+                  </div>
+                  <input
+                    type="checkbox"
+                    className="h-5 w-5 rounded border-input focus:ring-ring"
+                    checked={form.webhook_enabled || false}
+                    onChange={e => updateField('webhook_enabled', e.target.checked)}
+                  />
+                </div>
+
+                {/* Webhook URL & Time Input */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+                  <div className="sm:col-span-2">
+                    <Input
+                      label="URL do Webhook"
+                      placeholder="https://exemplo.com/webhook"
+                      value={form.webhook_url || ''}
+                      onChange={e => updateField('webhook_url', e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <Input
+                      label="Horário do Disparo"
+                      type="time"
+                      value={form.webhook_time || '09:00'}
+                      onChange={e => updateField('webhook_time', e.target.value)}
+                    />
+                  </div>
+                </div>
+
+                {/* Days Threshold */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                  <Input
+                    label="Dias de Antecedência p/ Validade"
+                    type="number"
+                    min="1"
+                    max="90"
+                    value={form.webhook_days_threshold ?? 7}
+                    onChange={e => updateField('webhook_days_threshold', Number(e.target.value))}
+                  />
+
+                  {/* Stock Threshold Group */}
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium mb-1.5 block">Alerta de Estoque Baixo</label>
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4 rounded border-input focus:ring-ring"
+                        id="webhook_stock_enabled"
+                        checked={form.webhook_stock_threshold_enabled || false}
+                        onChange={e => updateField('webhook_stock_threshold_enabled', e.target.checked)}
+                      />
+                      <label htmlFor="webhook_stock_enabled" className="text-xs text-muted-foreground">
+                        Habilitar alerta de estoque
+                      </label>
+                    </div>
+                    {form.webhook_stock_threshold_enabled && (
+                      <Input
+                        type="number"
+                        min="1"
+                        value={form.webhook_stock_threshold ?? 5}
+                        onChange={e => updateField('webhook_stock_threshold', Number(e.target.value))}
+                      />
+                    )}
+                  </div>
+                </div>
+
+                {/* Test button & status */}
+                <div className="pt-4 border-t border-border/30 flex flex-col sm:flex-row items-center gap-4 justify-between">
+                  <Button
+                    onClick={handleTestWebhook}
+                    isLoading={testingWebhook}
+                    variant="outline"
+                    className="w-full sm:w-auto"
+                    disabled={!form.webhook_url}
+                  >
+                    <Send size={16} className="mr-2" />
+                    Testar Disparo Agora
+                  </Button>
+                  
+                  {webhookTestResult && (
+                    <span className={`text-sm font-medium ${webhookTestResult.success ? 'text-emerald-600 dark:text-emerald-400' : 'text-destructive'}`}>
+                      {webhookTestResult.message}
+                    </span>
+                  )}
                 </div>
               </motion.div>
             )}
