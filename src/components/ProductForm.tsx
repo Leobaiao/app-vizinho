@@ -6,9 +6,12 @@ import { Button } from './ui/Button';
 import { Input } from './ui/Input';
 import { ImageUpload } from './ui/ImageUpload';
 import { BarcodeScanner } from './BarcodeScanner';
-import { calculateSellingPrice } from '../utils/pricing';
+import { calculateSellingPrice, calculateMarkupPrice, calculateRealMargin, getSuggestedPsychologicalPrice } from '../utils/pricing';
 import { fetchProductByBarcode, compressImageFromUrl } from '../utils/barcode';
-import { Barcode, Tag, Save, X, Info, Search, Loader2 } from 'lucide-react';
+import { usePricingConfig } from '../hooks/usePricingConfig';
+import { getDefaultMarginForCategory } from '../utils/pricingDefaults';
+import { CATEGORIAS_MINI_MERCADO } from '../types/pricing_config';
+import { Barcode, Tag, Save, X, Info, Search, Loader2, ChevronDown, ChevronUp } from 'lucide-react';
 import type { ProductInsert } from '../types/product';
 
 const productSchema = z.object({
@@ -20,6 +23,7 @@ const productSchema = z.object({
   margin_percent: z.number().min(0, 'Margem não pode ser negativa'),
   payment_fees: z.number().min(0),
   fixed_costs: z.number().min(0),
+  practiced_price: z.number().min(0).optional().or(z.nan()),
   market_price: z.number().optional(),
   market_costs: z.array(z.object({
     price: z.number().optional().or(z.nan()),
@@ -50,6 +54,8 @@ export function ProductForm({ initialData, onSubmit, onCancel, loading }: Produc
   const [profitAmount, setProfitAmount] = useState(0);
   const [showScanner, setShowScanner] = useState(false);
   const [isFetchingBarcode, setIsFetchingBarcode] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const { config: pricingConfig } = usePricingConfig();
 
   const {
     register,
@@ -68,6 +74,7 @@ export function ProductForm({ initialData, onSubmit, onCancel, loading }: Produc
       margin_percent: initialData?.margin_percent || 30,
       payment_fees: initialData?.payment_fees || 0,
       fixed_costs: initialData?.fixed_costs || 0,
+      practiced_price: initialData?.practiced_price || undefined,
       market_price: initialData?.market_price || 0,
       market_costs: (() => {
         const initialCosts = (initialData as any)?.market_costs && (initialData as any)?.market_costs.length > 0
@@ -150,17 +157,41 @@ export function ProductForm({ initialData, onSubmit, onCancel, loading }: Produc
   // Observar mudanças para atualizar a calculadora em tempo real
   const watchedFields = useWatch({ control });
 
+  // Auto-fill margem ao trocar de categoria
   useEffect(() => {
-    const { sellingPrice, grossProfitAmount } = calculateSellingPrice({
-      costPrice: Number(watchedFields.cost_price || 0),
-      marginPercent: Number(watchedFields.margin_percent || 0),
-      paymentFeesPercent: Number(watchedFields.payment_fees || 0),
-      fixedCostsAmount: Number(watchedFields.fixed_costs || 0),
-    });
+    const cat = watchedFields.category;
+    if (cat && pricingConfig) {
+      const margem = getDefaultMarginForCategory(cat, pricingConfig);
+      setValue('margin_percent', margem);
+      setValue('payment_fees', pricingConfig.taxa_ponderada_pct);
+    }
+  }, [watchedFields.category, pricingConfig, setValue]);
 
-    setCalculatedPrice(sellingPrice);
-    setProfitAmount(grossProfitAmount);
-  }, [watchedFields]);
+  useEffect(() => {
+    const costPrice = Number(watchedFields.cost_price || 0);
+    const categoria = watchedFields.category || '';
+
+    // Try new markup formula first (requires category)
+    if (costPrice > 0 && categoria && pricingConfig) {
+      const result = calculateMarkupPrice({
+        costPrice,
+        categoria,
+        config: pricingConfig,
+      });
+      setCalculatedPrice(result.precoSugerido);
+      setProfitAmount(result.precoSugerido - costPrice);
+    } else {
+      // Fallback to legacy formula
+      const { sellingPrice, grossProfitAmount } = calculateSellingPrice({
+        costPrice,
+        marginPercent: Number(watchedFields.margin_percent || 0),
+        paymentFeesPercent: Number(watchedFields.payment_fees || 0),
+        fixedCostsAmount: Number(watchedFields.fixed_costs || 0),
+      });
+      setCalculatedPrice(sellingPrice);
+      setProfitAmount(grossProfitAmount);
+    }
+  }, [watchedFields, pricingConfig]);
 
   const handleBarcodeLookup = async (code: string) => {
     if (!code || code.length < 8) return;
@@ -233,6 +264,10 @@ export function ProductForm({ initialData, onSubmit, onCancel, loading }: Produc
             mainExpiryDate = sortedBatches[0].expiry_date;
           }
 
+          const practicedPriceVal = typeof data.practiced_price === 'number' && !isNaN(data.practiced_price) && data.practiced_price > 0
+            ? data.practiced_price
+            : null;
+
           onSubmit({
             ...data,
             category: data.category === '' ? null : data.category,
@@ -242,6 +277,7 @@ export function ProductForm({ initialData, onSubmit, onCancel, loading }: Produc
             min_stock: isNaN(data.min_stock as any) ? 0 : data.min_stock,
             market_costs: cleanedMarketCosts,
             selling_price: calculatedPrice,
+            practiced_price: practicedPriceVal,
             batches: cleanedBatches,
           } as any);
         })} 
@@ -285,11 +321,19 @@ export function ProductForm({ initialData, onSubmit, onCancel, loading }: Produc
               />
               
               <div className="grid grid-cols-2 gap-4">
-                <Input
-                  label="Categoria"
-                  placeholder="Ex: Bebidas"
-                  {...register('category')}
-                />
+                <div className="w-full space-y-1.5">
+                  <label className="text-sm font-medium">Categoria</label>
+                  <select
+                    {...register('category')}
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring transition-all"
+                  >
+                    <option value="">Selecione...</option>
+                    {CATEGORIAS_MINI_MERCADO.map(cat => (
+                      <option key={cat} value={cat}>{cat}</option>
+                    ))}
+                    <option value="OUTROS">OUTROS</option>
+                  </select>
+                </div>
                 <div className="relative flex flex-col space-y-1.5">
                   <label className="text-sm font-medium">Código de Barras</label>
                   <div className="relative">
@@ -448,19 +492,69 @@ export function ProductForm({ initialData, onSubmit, onCancel, loading }: Produc
               {...register('margin_percent', { valueAsNumber: true })}
               error={errors.margin_percent?.message}
             />
-            <Input
-              label="Taxas Pagamento (%)"
-              type="number"
-              step="0.01"
-              {...register('payment_fees', { valueAsNumber: true })}
-            />
-            <Input
-              label="Custo Fixo Rateado (R$)"
-              type="number"
-              step="0.01"
-              {...register('fixed_costs', { valueAsNumber: true })}
-            />
           </div>
+
+          {/* Campo de Preço Praticado */}
+          <div className="mt-4">
+            <Input
+              label="Preço Praticado (R$) — opcional"
+              type="number"
+              step="0.01"
+              placeholder="Ex: 8.90 (preço da gôndola)"
+              {...register('practiced_price', { valueAsNumber: true })}
+            />
+            {(() => {
+              const pp = Number(watchedFields.practiced_price);
+              if (pp > 0 && Number(watchedFields.cost_price) > 0 && pricingConfig) {
+                const realMargin = calculateRealMargin(
+                  Number(watchedFields.cost_price),
+                  pp,
+                  pricingConfig
+                );
+                return (
+                  <div className={`mt-2 flex items-center gap-2 text-xs font-bold px-3 py-1.5 rounded-lg ${
+                    realMargin >= Number(watchedFields.margin_percent || 0)
+                      ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400'
+                      : 'bg-amber-500/10 text-amber-700 dark:text-amber-400'
+                  }`}>
+                    <Info size={12} />
+                    Margem Real: {realMargin.toFixed(1)}%
+                    {realMargin < Number(watchedFields.margin_percent || 0) && ' (abaixo da desejada)'}
+                  </div>
+                );
+              }
+              return null;
+            })()}
+          </div>
+
+          {/* Advanced overrides (collapsible) */}
+          <button
+            type="button"
+            onClick={() => setShowAdvanced(!showAdvanced)}
+            className="flex items-center gap-2 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors mt-2"
+          >
+            {showAdvanced ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+            Taxas e custos avançados (override)
+          </button>
+          {showAdvanced && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-2 p-3 bg-muted/20 rounded-xl border border-border/30 animate-in fade-in duration-200">
+              <Input
+                label="Taxas Pagamento (%) — override"
+                type="number"
+                step="0.01"
+                {...register('payment_fees', { valueAsNumber: true })}
+              />
+              <Input
+                label="Custo Fixo Rateado (R$) — override"
+                type="number"
+                step="0.01"
+                {...register('fixed_costs', { valueAsNumber: true })}
+              />
+              <p className="col-span-full text-[10px] text-muted-foreground italic">
+                * Esses campos sobrescrevem os valores globais apenas para este produto.
+              </p>
+            </div>
+          )}
 
           {/* Resultado da Calculadora */}
           <div className="mt-6 p-6 rounded-xl bg-primary/10 border border-primary/20 space-y-4">
@@ -474,10 +568,28 @@ export function ProductForm({ initialData, onSubmit, onCancel, loading }: Produc
                 <p className="text-lg font-bold text-emerald-600">+ R$ {profitAmount.toFixed(2)}</p>
               </div>
             </div>
+
+            {/* Psychological Price Suggestion */}
+            {calculatedPrice > 0 && (() => {
+              const psiPrice = getSuggestedPsychologicalPrice(calculatedPrice);
+              return psiPrice !== calculatedPrice ? (
+                <div className="pt-2 flex items-center gap-2 text-xs">
+                  <span className="text-muted-foreground">💡 Preço psicológico:</span>
+                  <button
+                    type="button"
+                    onClick={() => setValue('practiced_price', psiPrice)}
+                    className="font-bold text-primary hover:underline"
+                  >
+                    R$ {psiPrice.toFixed(2)}
+                  </button>
+                  <span className="text-[10px] text-muted-foreground">(clique para aplicar)</span>
+                </div>
+              ) : null;
+            })()}
             
             <div className="pt-4 border-t border-primary/10 flex items-center gap-2 text-xs text-muted-foreground">
               <Info size={14} />
-              <span>Custo Total Operacional: R$ {(Number(watchedFields.cost_price || 0) + Number(watchedFields.fixed_costs || 0)).toFixed(2)}</span>
+              <span>Fórmula: TETO(Custo ÷ Fator Markup, R$0,10)</span>
             </div>
           </div>
 

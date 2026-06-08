@@ -16,6 +16,7 @@ export interface Product {
   market_price?: number;
   market_costs?: MarketCost[];
   selling_price?: number;
+  practiced_price?: number;
   margin_percent: number;
   payment_fees: number;
   fixed_costs: number;

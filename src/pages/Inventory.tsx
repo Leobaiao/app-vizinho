@@ -315,15 +315,17 @@ export default function Inventory() {
       </div>
 
       {!activeSession ? (
-        <button 
-          onClick={startSession}
-          className="w-full aspect-[2/1] rounded-3xl bg-primary text-primary-foreground flex flex-col items-center justify-center gap-4 shadow-xl shadow-primary/20 active:scale-95 transition-all"
-        >
-          <div className="p-5 rounded-full bg-white/20">
-            <Play size={48} fill="currentColor" />
-          </div>
-          <span className="text-2xl font-black uppercase tracking-wider">Iniciar Contagem</span>
-        </button>
+        <div className="flex justify-center w-full mt-8">
+          <button 
+            onClick={startSession}
+            className="w-full max-w-3xl aspect-[2/1] md:aspect-auto md:h-64 lg:h-72 rounded-3xl bg-primary text-primary-foreground flex flex-col items-center justify-center gap-4 shadow-xl shadow-primary/20 active:scale-95 transition-all hover:bg-primary/90"
+          >
+            <div className="p-5 rounded-full bg-white/20">
+              <Play size={48} fill="currentColor" />
+            </div>
+            <span className="text-2xl font-black uppercase tracking-wider">Iniciar Contagem</span>
+          </button>
+        </div>
       ) : (
         <div className="space-y-6">
           {showScanner ? (

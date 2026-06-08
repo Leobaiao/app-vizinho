@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { Button } from '../components/ui/Button';
-import { LogOut, Package, Store, LayoutDashboard, Barcode, History as HistoryIcon } from 'lucide-react';
+import { LogOut, Package, Store, LayoutDashboard, Barcode, History as HistoryIcon, Settings } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
 
 export default function Layout({ children }: { children: ReactNode }) {
@@ -13,6 +13,7 @@ export default function Layout({ children }: { children: ReactNode }) {
     { label: 'Produtos', path: '/products', icon: <Package size={20} /> },
     { label: 'Estoque', path: '/stock', icon: <Barcode size={20} /> },
     { label: 'Histórico', path: '/history', icon: <HistoryIcon size={20} /> },
+    { label: 'Config', path: '/settings', icon: <Settings size={20} /> },
   ];
 
   return (

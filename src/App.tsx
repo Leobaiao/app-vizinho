@@ -7,6 +7,7 @@ import Home from './pages/Home';
 import Products from './pages/Products';
 import Inventory from './pages/Inventory';
 import History from './pages/History';
+import PricingConfig from './pages/PricingConfig';
 
 function PrivateRoute({ children }: { children: ReactNode }) {
   const { user, loading } = useAuth();
@@ -69,6 +70,14 @@ function AppContent() {
         element={
           <PrivateRoute>
             <History />
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path="/settings"
+        element={
+          <PrivateRoute>
+            <PricingConfig />
           </PrivateRoute>
         }
       />

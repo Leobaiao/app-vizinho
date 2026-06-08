@@ -35,9 +35,19 @@ export default function Home() {
   // Cálculos de Dashboard
   const totalStockValue = products.reduce((acc, p) => acc + (p.cost_price * p.current_stock), 0);
   const potentialProfit = products.reduce((acc, p) => {
-    const profit = (p.selling_price || 0) - p.cost_price;
+    const salePrice = p.practiced_price || p.selling_price || 0;
+    const profit = salePrice - p.cost_price;
     return acc + (profit * p.current_stock);
   }, 0);
+
+  // Margem média ponderada pelo valor de estoque
+  const totalSaleValue = products.reduce((acc, p) => {
+    const salePrice = p.practiced_price || p.selling_price || 0;
+    return acc + (salePrice * p.current_stock);
+  }, 0);
+  const avgMarginPct = totalSaleValue > 0
+    ? ((totalSaleValue - totalStockValue) / totalSaleValue) * 100
+    : 0;
   
   const lowStockProducts = products.filter(p => p.current_stock <= (p.min_stock || 0));
   const lowStockItemsCount = lowStockProducts.length;
@@ -218,11 +228,11 @@ export default function Home() {
       trend: 'Total investido'
     },
     {
-      label: 'Lucro Potencial',
-      value: `R$ ${potentialProfit.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`,
+      label: 'Margem Média',
+      value: `${avgMarginPct.toFixed(1)}%`,
       icon: <TrendingUp className="text-blue-600 dark:text-blue-400" />,
       color: 'bg-blue-500/10',
-      trend: 'Ao vender todo estoque'
+      trend: `Lucro pot.: R$ ${potentialProfit.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
     },
     {
       label: 'Produtos em Alerta',

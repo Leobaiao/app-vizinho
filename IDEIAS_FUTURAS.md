@@ -14,6 +14,7 @@ Este documento lista as funcionalidades e melhorias planejadas para as próximas
 - [ ] **Impressão de Etiquetas**: Gerar um PDF formatado com o nome do produto e o preço de venda para imprimir e colar na prateleira.
 - [ ] **Validade de Produtos**: Campo para data de validade com alerta visual (ex: ícone vermelho se faltar 7 dias para vencer).
 - [ ] **Tela de Configuração de Mensagens**: Painel de configurações no app para cadastrar a URL, Token, Sessão da Wuzapi e o telefone de destino para envios automáticos.
+- [ ] **Exportação/Importação em Massa (Planilha)**: Exportar o estoque para Excel/CSV, permitir alterações rápidas no PC e importar a mesma planilha para atualizar tudo de uma vez.
 
 ## 📈 Prioridade III: Inteligência e Vendas
 - [x] **Integração com API de Código de Barras**: Buscar automaticamente o Nome, Marca e Foto do produto na internet (ex: BrasilAPI ou Cosmos) assim que o usuário escanear um código novo no cadastro.
