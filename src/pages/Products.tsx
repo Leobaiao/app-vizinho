@@ -6,7 +6,9 @@ import { Card } from '../components/ui/Card';
 import { ProductForm } from '../components/ProductForm';
 import { BarcodeScanner } from '../components/BarcodeScanner';
 import { Modal } from '../components/ui/Modal';
-import { Plus, Search, Package, Edit2, Trash2, Barcode, AlertTriangle, LayoutGrid, List as ListIcon, Filter, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
+import { BulkOperationsModal } from '../components/BulkOperationsModal';
+import { Plus, Search, Package, Edit2, Trash2, Barcode, AlertTriangle, LayoutGrid, List as ListIcon, Filter, ArrowUpDown, ArrowUp, ArrowDown, FileSpreadsheet, Zap } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 import type { ProductInsert } from '../types/product';
 import { CATEGORIAS_MINI_MERCADO } from '../types/pricing_config';
 
@@ -80,16 +82,21 @@ const sanitizeImageUrl = (url?: string) => {
 };
 
 export default function Products() {
-  const { products, loading, addProduct, updateProduct, deleteProduct } = useProducts();
+  const { products, loading, error, addProduct, updateProduct, deleteProduct, bulkProcessProducts } = useProducts();
   const [searchTerm, setSearchTerm] = useState('');
   const [isAdding, setIsAdding] = useState(false);
   const [editingProduct, setEditingProduct] = useState<any>(null);
   const [submitting, setSubmitting] = useState(false);
   const [showScanner, setShowScanner] = useState(false);
+  const [showBulkModal, setShowBulkModal] = useState(false);
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
   const [categoryFilter, setCategoryFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [sortBy, setSortBy] = useState('name_asc');
+  
+  const [isQuickEditMode, setIsQuickEditMode] = useState(false);
+  const [quickEdits, setQuickEdits] = useState<Record<string, { cost_price: number; selling_price: number; current_stock: number }>>({});
+  const [savingQuickEdits, setSavingQuickEdits] = useState(false);
 
   const [modal, setModal] = useState<{
     isOpen: boolean;
@@ -99,6 +106,69 @@ export default function Products() {
     actionLabel?: string;
     onAction?: () => void;
   }>({ isOpen: false, title: '', description: '', variant: 'info' });
+
+  const handleSaveQuickEdits = async () => {
+    const updates = Object.entries(quickEdits).map(([id, data]) => ({
+      id,
+      ...data
+    }));
+    
+    if (updates.length === 0) {
+      setIsQuickEditMode(false);
+      return;
+    }
+
+    setSavingQuickEdits(true);
+    const success = await bulkProcessProducts(updates, []);
+    setSavingQuickEdits(false);
+    
+    if (success) {
+      setQuickEdits({});
+      setIsQuickEditMode(false);
+    } else {
+      setModal({
+        isOpen: true,
+        title: 'Erro ao salvar',
+        description: error || 'Ocorreu um erro ao salvar as alterações rápidas.',
+        variant: 'danger',
+      });
+    }
+  };
+
+  const cancelQuickEdit = () => {
+    if (Object.keys(quickEdits).length > 0) {
+      setModal({
+        isOpen: true,
+        title: 'Cancelar Edição?',
+        description: 'Você tem alterações não salvas. Deseja realmente cancelar e perder as edições?',
+        variant: 'warning',
+        actionLabel: 'Sim, Cancelar',
+        onAction: () => {
+          setQuickEdits({});
+          setIsQuickEditMode(false);
+        }
+      });
+    } else {
+      setIsQuickEditMode(false);
+    }
+  };
+
+  const handleQuickEditChange = (id: string, field: 'cost_price' | 'selling_price' | 'current_stock', value: number) => {
+    setQuickEdits(prev => {
+      const existing = prev[id] || { 
+        cost_price: products.find(p => p.id === id)?.cost_price || 0,
+        selling_price: products.find(p => p.id === id)?.selling_price || 0,
+        current_stock: products.find(p => p.id === id)?.current_stock || 0
+      };
+      return {
+        ...prev,
+        [id]: {
+          ...existing,
+          [field]: value
+        }
+      };
+    });
+  };
 
   const handleAddProduct = async (data: ProductInsert) => {
     setSubmitting(true);
@@ -230,6 +300,13 @@ export default function Products() {
         onAction={modal.onAction}
       />
 
+      <BulkOperationsModal
+        isOpen={showBulkModal}
+        onClose={() => setShowBulkModal(false)}
+        products={products as any}
+        onProcess={bulkProcessProducts}
+      />
+
       {showScanner && (
         <BarcodeScanner 
           onScan={(code) => {
@@ -239,6 +316,30 @@ export default function Products() {
           onClose={() => setShowScanner(false)} 
         />
       )}
+
+      <AnimatePresence>
+        {Object.keys(quickEdits).length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 50 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 50 }}
+            className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-card border border-border shadow-2xl rounded-full px-6 py-3 flex items-center gap-6"
+          >
+            <div className="flex items-center gap-2">
+              <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+              <span className="font-medium text-sm sm:text-base">{Object.keys(quickEdits).length} itens editados</span>
+            </div>
+            <div className="flex gap-2">
+              <Button variant="ghost" size="sm" onClick={cancelQuickEdit} disabled={savingQuickEdits} className="rounded-full">
+                Cancelar
+              </Button>
+              <Button size="sm" onClick={handleSaveQuickEdits} disabled={savingQuickEdits} className="rounded-full shadow-lg">
+                {savingQuickEdits ? 'Salvando...' : 'Salvar Tudo'}
+              </Button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <h1 className="text-3xl font-bold tracking-tight">Produtos</h1>
@@ -259,6 +360,17 @@ export default function Products() {
               <LayoutGrid size={18} />
             </button>
           </div>
+          <Button variant="outline" onClick={() => setShowBulkModal(true)} title="Importar/Exportar Planilha">
+            <FileSpreadsheet className="mr-2 h-4 w-4 text-emerald-600 dark:text-emerald-500" /> Planilhas
+          </Button>
+          <Button 
+            variant={isQuickEditMode ? "primary" : "outline"} 
+            onClick={() => isQuickEditMode ? cancelQuickEdit() : setIsQuickEditMode(true)} 
+            title="Edição Rápida"
+            className={isQuickEditMode ? 'ring-2 ring-primary ring-offset-2 ring-offset-background' : ''}
+          >
+            <Zap className={`mr-2 h-4 w-4 ${isQuickEditMode ? 'text-primary-foreground' : 'text-amber-500'}`} /> {isQuickEditMode ? 'Sair Edição' : 'Edição Rápida'}
+          </Button>
           <Button onClick={() => setIsAdding(true)}>
             <Plus className="mr-2 h-4 w-4" /> Novo Produto
           </Button>
@@ -395,14 +507,48 @@ export default function Products() {
                       <p className="text-sm text-muted-foreground truncate">{product.category || 'Sem categoria'}</p>
                       <div className="mt-1 flex flex-col gap-1">
                         <div className="flex items-baseline gap-2">
-                          <span className="text-xl font-bold text-primary">
-                            R$ {product.selling_price?.toFixed(2) || '0,00'}
-                          </span>
-                          <span className="text-xs text-muted-foreground">
-                            Custo: R$ {product.cost_price.toFixed(2)}
-                          </span>
+                          {isQuickEditMode ? (
+                            <div className="flex items-center gap-2 mt-1">
+                              <div className="flex flex-col">
+                                <span className="text-[10px] text-muted-foreground uppercase font-bold">Custo</span>
+                                <Input 
+                                  type="number" 
+                                  className="h-8 w-20 text-xs px-2"
+                                  value={quickEdits[product.id]?.cost_price ?? product.cost_price}
+                                  onChange={e => handleQuickEditChange(product.id, 'cost_price', parseFloat(e.target.value) || 0)}
+                                />
+                              </div>
+                              <div className="flex flex-col">
+                                <span className="text-[10px] text-primary uppercase font-bold">Venda</span>
+                                <Input 
+                                  type="number" 
+                                  className="h-8 w-20 text-xs px-2 border-primary/30"
+                                  value={quickEdits[product.id]?.selling_price ?? product.selling_price ?? 0}
+                                  onChange={e => handleQuickEditChange(product.id, 'selling_price', parseFloat(e.target.value) || 0)}
+                                />
+                              </div>
+                              <div className="flex flex-col">
+                                <span className="text-[10px] text-muted-foreground uppercase font-bold">Estoque</span>
+                                <Input 
+                                  type="number" 
+                                  className="h-8 w-16 text-xs px-2"
+                                  value={quickEdits[product.id]?.current_stock ?? product.current_stock}
+                                  onChange={e => handleQuickEditChange(product.id, 'current_stock', parseInt(e.target.value, 10) || 0)}
+                                />
+                              </div>
+                            </div>
+                          ) : (
+                            <>
+                              <span className="text-xl font-bold text-primary">
+                                R$ {product.selling_price?.toFixed(2) || '0,00'}
+                              </span>
+                              <span className="text-xs text-muted-foreground">
+                                Custo: R$ {product.cost_price.toFixed(2)}
+                              </span>
+                            </>
+                          )}
                         </div>
-                        {product.market_price && product.market_price > 0 && (
+                        {!isQuickEditMode && product.market_price && product.market_price > 0 && (
                           <div className="flex items-center gap-1.5 mt-0.5">
                             <span className="text-[11px] text-muted-foreground">
                               Mercado: R$ {product.market_price.toFixed(2)}
@@ -510,15 +656,42 @@ export default function Products() {
                         {product.category || '—'}
                       </td>
                       <td className="px-4 py-2 text-right">
-                        R$ {product.cost_price.toFixed(2)}
+                        {isQuickEditMode ? (
+                          <Input 
+                            type="number" 
+                            className="h-8 w-20 text-xs px-2 ml-auto"
+                            value={quickEdits[product.id]?.cost_price ?? product.cost_price}
+                            onChange={e => handleQuickEditChange(product.id, 'cost_price', parseFloat(e.target.value) || 0)}
+                          />
+                        ) : (
+                          `R$ ${product.cost_price.toFixed(2)}`
+                        )}
                       </td>
                       <td className="px-4 py-2 text-right font-bold text-primary">
-                        R$ {product.practiced_price?.toFixed(2) || product.selling_price?.toFixed(2) || '0.00'}
+                        {isQuickEditMode ? (
+                          <Input 
+                            type="number" 
+                            className="h-8 w-20 text-xs px-2 ml-auto border-primary/30"
+                            value={quickEdits[product.id]?.selling_price ?? product.selling_price ?? 0}
+                            onChange={e => handleQuickEditChange(product.id, 'selling_price', parseFloat(e.target.value) || 0)}
+                          />
+                        ) : (
+                          `R$ ${product.practiced_price?.toFixed(2) || product.selling_price?.toFixed(2) || '0.00'}`
+                        )}
                       </td>
                       <td className="px-4 py-2 text-right">
-                        <span className={`inline-flex items-center justify-center px-2 py-0.5 rounded-full text-xs font-bold ${isLowStock ? 'bg-amber-500/10 text-amber-600 border border-amber-500/20' : 'bg-muted text-muted-foreground'}`}>
-                          {product.current_stock || 0}
-                        </span>
+                        {isQuickEditMode ? (
+                          <Input 
+                            type="number" 
+                            className="h-8 w-16 text-xs px-2 ml-auto"
+                            value={quickEdits[product.id]?.current_stock ?? product.current_stock}
+                            onChange={e => handleQuickEditChange(product.id, 'current_stock', parseInt(e.target.value, 10) || 0)}
+                          />
+                        ) : (
+                          <span className={`inline-flex items-center justify-center px-2 py-0.5 rounded-full text-xs font-bold ${isLowStock ? 'bg-amber-500/10 text-amber-600 border border-amber-500/20' : 'bg-muted text-muted-foreground'}`}>
+                            {product.current_stock || 0}
+                          </span>
+                        )}
                       </td>
                       <td className="px-4 py-2 text-center">
                         {expiryAlert ? (

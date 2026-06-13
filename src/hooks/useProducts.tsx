@@ -287,6 +287,69 @@ export function useProducts() {
     }
   };
 
+  const bulkProcessProducts = async (updates: any[], creates: any[]) => {
+    try {
+      if (isDemo) {
+        let updatedProducts = [...products];
+        
+        // Updates
+        updates.forEach(update => {
+          const index = updatedProducts.findIndex(p => p.id === update.id);
+          if (index !== -1) {
+            updatedProducts[index] = { 
+              ...updatedProducts[index], 
+              ...update, 
+              updated_at: new Date().toISOString() 
+            };
+          }
+        });
+
+        // Creates
+        const newProducts = creates.map(create => ({
+          ...create,
+          id: crypto.randomUUID(),
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          product_batches: []
+        })) as Product[];
+        
+        updatedProducts = [...updatedProducts, ...newProducts];
+
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedProducts.map(({ product_batches, ...p }: any) => p)));
+        setProducts(updatedProducts);
+      } else {
+        // Updates via upsert
+        if (updates.length > 0) {
+          const fullUpdates = updates.map(u => {
+            const existing = products.find(p => p.id === u.id);
+            if (!existing) return null;
+            const { product_batches, ...rest } = existing as any;
+            return { ...rest, ...u, updated_at: new Date().toISOString() };
+          }).filter(Boolean);
+          
+          if (fullUpdates.length > 0) {
+            const { error: updateError } = await supabase.from('products').upsert(fullUpdates);
+            if (updateError) throw updateError;
+          }
+        }
+        
+        // Creates via insert
+        if (creates.length > 0) {
+          const inserts = creates.map(c => ({ ...c, user_id: user?.id }));
+          const { error: createError } = await supabase.from('products').insert(inserts);
+          if (createError) throw createError;
+        }
+
+        // Recarregar os produtos no final para garantir os dados
+        await fetchProducts();
+      }
+      return true;
+    } catch (err: any) {
+      setError(err.message);
+      return false;
+    }
+  };
+
   return {
     products,
     loading,
@@ -294,6 +357,7 @@ export function useProducts() {
     addProduct,
     updateProduct,
     deleteProduct,
+    bulkProcessProducts,
     refresh: fetchProducts,
   };
 }

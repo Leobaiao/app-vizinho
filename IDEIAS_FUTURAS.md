@@ -15,6 +15,15 @@ Este documento lista as funcionalidades e melhorias planejadas para as próximas
 - [ ] **Validade de Produtos**: Campo para data de validade com alerta visual (ex: ícone vermelho se faltar 7 dias para vencer).
 - [ ] **Tela de Configuração de Mensagens**: Painel de configurações no app para cadastrar a URL, Token, Sessão da Wuzapi e o telefone de destino para envios automáticos.
 - [ ] **Exportação/Importação em Massa (Planilha)**: Exportar o estoque para Excel/CSV, permitir alterações rápidas no PC e importar a mesma planilha para atualizar tudo de uma vez.
+  - Suporte a ambos os formatos: Excel (.xlsx) e CSV.
+  - **Atualização Segura**: Para produtos existentes (via ID oculto/bloqueado), apenas Estoque e Preços (Custo/Venda) serão atualizados.
+  - **Criação Fácil**: Novas linhas inseridas sem ID vão gerar automaticamente novos produtos no sistema.
+  - **Importação Robusta**: Linhas válidas são salvas, as com erro geram um relatório claro ao final da operação.
+- [ ] **Modo de Edição Rápida In-App**: Botão global que transforma todos os preços e estoques da tela em campos digitáveis para ajustes instantâneos.
+  - Permite alterar múltiplos produtos ao mesmo tempo sem abrir o formulário completo.
+  - Apenas campos operacionais (Estoque, Custo, Venda) serão editáveis.
+  - O estado das alterações é mantido na memória mesmo se o usuário buscar ou filtrar outros itens.
+  - Botão flutuante para "Salvar Tudo" (reaproveitando a lógica de bulkUpdate da planilha).
 
 ## 📈 Prioridade III: Inteligência e Vendas
 - [x] **Integração com API de Código de Barras**: Buscar automaticamente o Nome, Marca e Foto do produto na internet (ex: BrasilAPI ou Cosmos) assim que o usuário escanear um código novo no cadastro.
