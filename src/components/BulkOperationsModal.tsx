@@ -2,8 +2,11 @@ import { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from './ui/Button';
 import { X, Upload, FileSpreadsheet, AlertTriangle, CheckCircle2, FileJson, Info } from 'lucide-react';
-import * as XLSX from 'xlsx';
+import ExcelJS from 'exceljs';
+import { saveAs } from 'file-saver';
+import Papa from 'papaparse';
 import type { Product } from '../types/product';
+import { CATEGORIAS_MINI_MERCADO } from '../types/pricing_config';
 
 interface BulkOperationsModalProps {
   isOpen: boolean;
@@ -24,26 +27,123 @@ export function BulkOperationsModal({ isOpen, onClose, products, onProcess }: Bu
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleExport = (format: 'xlsx' | 'csv') => {
-    const data = products.map(p => ({
-      ID: p.id,
-      Nome: p.name,
-      Categoria: p.category || '',
-      Custo: p.cost_price || 0,
-      'Preço de Venda': p.selling_price || 0,
-      'Estoque Atual': p.current_stock || 0,
-      'Estoque Mínimo': p.min_stock || 0,
-      'Código de Barras': p.barcode || ''
-    }));
+  const handleExport = async (format: 'xlsx' | 'csv') => {
+    try {
+      if (format === 'csv') {
+        const data = products.map(p => ({
+          ID: p.id,
+          Nome: p.name,
+          Categoria: p.category || '',
+          Custo: p.cost_price || 0,
+          'Preço de Venda': p.selling_price || 0,
+          'Estoque Atual': p.current_stock || 0,
+          'Estoque Mínimo': p.min_stock || 0,
+          'Código de Barras': p.barcode || ''
+        }));
+        const csv = Papa.unparse(data);
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        saveAs(blob, 'estoque_vizinho.csv');
+        return;
+      }
 
-    const ws = XLSX.utils.json_to_sheet(data);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Produtos');
+      const workbook = new ExcelJS.Workbook();
+      const worksheet = workbook.addWorksheet('Produtos');
 
-    if (format === 'xlsx') {
-      XLSX.writeFile(wb, 'estoque_vizinho.xlsx');
-    } else {
-      XLSX.writeFile(wb, 'estoque_vizinho.csv');
+      worksheet.columns = [
+        { header: 'ID', key: 'id', width: 40 },
+        { header: 'Nome', key: 'name', width: 40 },
+        { header: 'Categoria', key: 'category', width: 25 },
+        { header: 'Custo', key: 'cost', width: 15 },
+        { header: 'Preço de Venda', key: 'price', width: 18 },
+        { header: 'Estoque Atual', key: 'stock', width: 15 },
+        { header: 'Estoque Mínimo', key: 'min_stock', width: 15 },
+        { header: 'Código de Barras', key: 'barcode', width: 20 }
+      ];
+
+      products.forEach(p => {
+        worksheet.addRow({
+          id: p.id,
+          name: p.name,
+          category: p.category || '',
+          cost: p.cost_price || 0,
+          price: p.selling_price || 0,
+          stock: p.current_stock || 0,
+          min_stock: p.min_stock || 0,
+          barcode: p.barcode || ''
+        });
+      });
+
+      // Formatação e congelamento
+      worksheet.views = [{ state: 'frozen', xSplit: 0, ySplit: 1 }];
+
+      // Estilizar Cabeçalho
+      const headerRow = worksheet.getRow(1);
+      headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+      headerRow.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FF1F2937' } // dark gray
+      };
+
+      // Formatar Moedas
+      worksheet.getColumn('cost').numFmt = '"R$"#,##0.00';
+      worksheet.getColumn('price').numFmt = '"R$"#,##0.00';
+
+      // Dropdown de Categoria (validação de dados)
+      const categoriesList = '"' + CATEGORIAS_MINI_MERCADO.join(',') + '"';
+      worksheet.getColumn('category').eachCell({ includeEmpty: true }, (cell, rowNumber) => {
+        if (rowNumber > 1) {
+          cell.dataValidation = {
+            type: 'list',
+            allowBlank: true,
+            formulae: [categoriesList]
+          };
+        }
+      });
+
+      // Proteção de Planilha: Bloquear IDs existentes, destravar o resto
+      await worksheet.protect('vizinho123', {
+        selectLockedCells: true,
+        selectUnlockedCells: true,
+        formatCells: true,
+        formatColumns: true,
+        formatRows: true,
+        insertColumns: false,
+        insertRows: true,
+        insertHyperlinks: true,
+        deleteColumns: false,
+        deleteRows: true,
+        sort: true,
+        autoFilter: true,
+        pivotTables: true
+      });
+
+      // Destravar todas as colunas de dados, mantendo ID travado APENAS se tiver valor
+      worksheet.eachRow({ includeEmpty: true }, (row, rowNumber) => {
+        if (rowNumber > 1) {
+          row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
+            if (colNumber === 1 && cell.value) {
+              cell.protection = { locked: true }; // ID existente fica bloqueado
+            } else {
+              cell.protection = { locked: false };
+            }
+          });
+        }
+      });
+
+      // Destravar linhas extras para o usuário poder adicionar produtos facilmente
+      for (let i = products.length + 2; i <= products.length + 200; i++) {
+        const row = worksheet.getRow(i);
+        row.eachCell({ includeEmpty: true }, (cell) => {
+          cell.protection = { locked: false };
+        });
+      }
+
+      const buffer = await workbook.xlsx.writeBuffer();
+      const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      saveAs(blob, 'estoque_vizinho.xlsx');
+    } catch (err) {
+      console.error('Erro na exportação:', err);
     }
   };
 
@@ -54,90 +154,139 @@ export function BulkOperationsModal({ isOpen, onClose, products, onProcess }: Bu
     }
   };
 
-  const processFile = (selectedFile: File) => {
+  const processFile = async (selectedFile: File) => {
     setProcessing(true);
     setReport(null);
 
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      try {
-        const data = e.target?.result;
-        const wb = XLSX.read(data, { type: 'binary' });
-        const wsName = wb.SheetNames[0];
-        const ws = wb.Sheets[wsName];
-        const jsonData = XLSX.utils.sheet_to_json<any>(ws);
+    try {
+      const updates: any[] = [];
+      const creates: any[] = [];
+      const errors: { line: number; reason: string }[] = [];
+      let rowCount = 0;
 
-        const updates: any[] = [];
-        const creates: any[] = [];
-        const errors: { line: number; reason: string }[] = [];
+      const processRow = (rowObj: Record<string, string>, lineNum: number) => {
+        // Encontrar as chaves corretas independente de maiúsculas/minúsculas
+        const getVal = (keys: string[]) => {
+          for (const key of keys) {
+            const foundKey = Object.keys(rowObj).find(k => k.toLowerCase() === key.toLowerCase());
+            if (foundKey) return rowObj[foundKey];
+          }
+          return '';
+        };
 
-        jsonData.forEach((row, index) => {
-          const line = index + 2; // +1 for header, +1 for 0-index
+        const id = getVal(['ID', 'id']);
+        const nome = getVal(['Nome', 'nome']);
+        
+        let custo = parseFloat(String(getVal(['Custo', 'custo'])).replace(',', '.'));
+        let preco = parseFloat(String(getVal(['Preço de Venda', 'preco', 'preço'])).replace(',', '.'));
+        let estoque = parseInt(String(getVal(['Estoque Atual', 'estoque'])).replace(',', '.'), 10);
+        let estoqueMin = parseInt(String(getVal(['Estoque Mínimo', 'estoque_minimo'])).replace(',', '.'), 10);
+        
+        if (isNaN(custo)) custo = 0;
+        if (isNaN(preco)) preco = 0;
+        if (isNaN(estoque)) estoque = 0;
+        if (isNaN(estoqueMin)) estoqueMin = 0;
 
-          const id = row['ID'] || row['id'];
-          const nome = row['Nome'] || row['nome'];
-          
-          let custo = parseFloat(String(row['Custo'] || row['custo']).replace(',', '.'));
-          let preco = parseFloat(String(row['Preço de Venda'] || row['preco'] || row['preço']).replace(',', '.'));
-          let estoque = parseInt(String(row['Estoque Atual'] || row['estoque']).replace(',', '.'), 10);
-          let estoqueMin = parseInt(String(row['Estoque Mínimo'] || row['estoque_minimo'] || 0).replace(',', '.'), 10);
-          
-          if (isNaN(custo)) custo = 0;
-          if (isNaN(preco)) preco = 0;
-          if (isNaN(estoque)) estoque = 0;
-          if (isNaN(estoqueMin)) estoqueMin = 0;
-
-          if (id) {
-            // Update
-            const existing = products.find(p => p.id === id);
-            if (!existing) {
-              errors.push({ line, reason: `ID '${id}' não encontrado no sistema.` });
-            } else {
-              updates.push({
-                id,
-                cost_price: custo,
-                selling_price: preco,
-                current_stock: estoque,
-                min_stock: estoqueMin
-              });
-            }
+        if (id) {
+          // Update
+          const existing = products.find(p => p.id === id);
+          if (!existing) {
+            errors.push({ line: lineNum, reason: `ID '${id}' não encontrado no sistema.` });
           } else {
-            // Create
-            if (!nome) {
-              errors.push({ line, reason: 'Nome é obrigatório para novos produtos.' });
-            } else {
-              creates.push({
-                name: nome,
-                category: row['Categoria'] || row['categoria'] || 'OUTROS',
-                cost_price: custo,
-                selling_price: preco,
-                current_stock: estoque,
-                min_stock: estoqueMin,
-                barcode: row['Código de Barras'] || row['codigo_barras'] || '',
-                image_url: '',
-              });
-            }
+            updates.push({
+              id,
+              cost_price: custo,
+              selling_price: preco,
+              current_stock: estoque,
+              min_stock: estoqueMin
+            });
+          }
+        } else {
+          // Create
+          if (!nome && !id && !getVal(['Categoria'])) {
+             // Empty row
+             return;
+          }
+          if (!nome) {
+            errors.push({ line: lineNum, reason: 'Nome é obrigatório para novos produtos.' });
+          } else {
+            creates.push({
+              name: nome,
+              category: getVal(['Categoria', 'categoria']) || 'OUTROS',
+              cost_price: custo,
+              selling_price: preco,
+              current_stock: estoque,
+              min_stock: estoqueMin,
+              barcode: getVal(['Código de Barras', 'codigo_barras']) || '',
+              image_url: '',
+            });
+          }
+        }
+      };
+
+      if (selectedFile.name.endsWith('.csv')) {
+        Papa.parse(selectedFile, {
+          header: true,
+          skipEmptyLines: true,
+          complete: (results) => {
+            results.data.forEach((row: any, index: number) => {
+              processRow(row, index + 2); // +1 array, +1 header
+            });
+            setReport({ total: results.data.length, updates, creates, errors });
+            setProcessing(false);
+          },
+          error: (error) => {
+            setReport({ total: 0, updates: [], creates: [], errors: [{ line: 0, reason: error.message }] });
+            setProcessing(false);
           }
         });
+        return; // Papa.parse é assíncrono via callbacks
+      } else {
+        // ExcelJS load
+        const workbook = new ExcelJS.Workbook();
+        const buffer = await selectedFile.arrayBuffer();
+        await workbook.xlsx.load(buffer);
+        
+        const ws = workbook.worksheets[0];
+        if (!ws) throw new Error('Nenhuma planilha encontrada no arquivo.');
 
-        setReport({
-          total: jsonData.length,
-          updates,
-          creates,
-          errors
+        const headers: string[] = [];
+        ws.getRow(1).eachCell((cell, colNum) => {
+          headers[colNum] = cell.text.trim();
         });
-      } catch (err: any) {
-        setReport({
-          total: 0,
-          updates: [],
-          creates: [],
-          errors: [{ line: 0, reason: `Erro ao processar arquivo: ${err.message}` }]
+
+        ws.eachRow((row, rowNumber) => {
+          if (rowNumber === 1) return; // Skip header
+          rowCount++;
+          
+          const rowObj: Record<string, string> = {};
+          row.eachCell({ includeEmpty: true }, (cell, colNum) => {
+            const headerName = headers[colNum];
+            if (headerName) {
+              let val = cell.value;
+              if (val && typeof val === 'object' && 'result' in val) val = String(val.result);
+              else if (val && typeof val === 'object' && 'text' in val) val = String(val.text);
+              rowObj[headerName] = val != null ? String(val) : '';
+            }
+          });
+
+          processRow(rowObj, rowNumber);
         });
-      } finally {
+
+        setReport({ total: rowCount, updates, creates, errors });
+      }
+    } catch (err: any) {
+      setReport({
+        total: 0,
+        updates: [],
+        creates: [],
+        errors: [{ line: 0, reason: `Erro ao processar arquivo: ${err.message}` }]
+      });
+    } finally {
+      if (!selectedFile.name.endsWith('.csv')) {
         setProcessing(false);
       }
-    };
-    reader.readAsBinaryString(selectedFile);
+    }
   };
 
   const handleConfirmImport = async () => {
@@ -207,18 +356,19 @@ export function BulkOperationsModal({ isOpen, onClose, products, onProcess }: Bu
                         Como funciona a exportação?
                       </h4>
                       <p className="text-sm text-muted-foreground leading-relaxed">
-                        Baixe o seu catálogo atual em formato Excel (.xlsx) ou CSV. Você pode usar este arquivo para fazer backup, ou editá-lo no seu computador para atualizar preços e estoque rapidamente e importar de volta no aplicativo.
+                        Baixe o seu catálogo atual em formato Excel (.xlsx) com formatação ou CSV bruto. Use este arquivo para editar seus produtos com facilidade no computador, e depois importe-o aqui para aplicar as alterações.
                       </p>
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <Button variant="outline" className="h-24 flex flex-col gap-2 hover:border-primary/50 hover:bg-primary/5" onClick={() => handleExport('xlsx')}>
-                        <FileSpreadsheet size={24} className="text-emerald-500" />
+                      <Button variant="outline" className="h-24 flex flex-col gap-2 hover:border-primary/50 hover:bg-primary/5 relative overflow-hidden group" onClick={() => handleExport('xlsx')}>
+                        <div className="absolute top-0 right-0 bg-primary text-primary-foreground text-[10px] font-bold px-2 py-0.5 rounded-bl-lg z-10">Recomendado</div>
+                        <FileSpreadsheet size={24} className="text-emerald-500 group-hover:scale-110 transition-transform" />
                         <span>Exportar Excel (.xlsx)</span>
                       </Button>
-                      <Button variant="outline" className="h-24 flex flex-col gap-2 hover:border-primary/50 hover:bg-primary/5" onClick={() => handleExport('csv')}>
-                        <FileJson size={24} className="text-primary" />
-                        <span>Exportar CSV (.csv)</span>
+                      <Button variant="outline" className="h-24 flex flex-col gap-2 hover:border-primary/50 hover:bg-primary/5 group" onClick={() => handleExport('csv')}>
+                        <FileJson size={24} className="text-primary group-hover:scale-110 transition-transform" />
+                        <span>Exportar CSV bruto (.csv)</span>
                       </Button>
                     </div>
                   </div>
@@ -236,7 +386,7 @@ export function BulkOperationsModal({ isOpen, onClose, products, onProcess }: Bu
                           <ul className="text-sm text-amber-700/80 dark:text-amber-500/80 space-y-1 list-disc list-inside">
                             <li>Para produtos existentes (com ID), apenas Preço e Estoque serão atualizados.</li>
                             <li>Linhas sem ID criarão novos produtos no sistema.</li>
-                            <li>Certifique-se de manter o cabeçalho original.</li>
+                            <li>A coluna ID deve ser mantida caso deseje atualizar produtos.</li>
                           </ul>
                         </div>
 
